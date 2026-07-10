@@ -24,9 +24,17 @@ async function sendText(text) {
   } catch (e) { console.error('Telegram metin hatası:', e); }
 }
 
-// ── 1: Hatırlatma ──────────────────────────────────────
+// ── 1: Hatırlatma (not + numara isteğe bağlı) ─────────
 app.post('/api/reminder', async (req, res) => {
-  await sendText('📌 Hatırlatma var!\nBirisi seni hatırlatmak için aradı.');
+  const note = (req.body.note || '').toString().slice(0, 500).trim();
+  const phone = (req.body.phone || '').toString().slice(0, 30).trim();
+
+  let text = '📌 Hatırlatma var!';
+  if (note) text += `\n\n📝 Not: ${note}`;
+  if (phone) text += `\n📱 Numara: ${phone}`;
+  if (!note && !phone) text += '\nBirisi seni hatırlatmak için aradı.';
+
+  await sendText(text);
   res.json({ ok: true });
 });
 

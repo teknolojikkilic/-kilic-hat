@@ -163,9 +163,9 @@
   <div class="screen active" id="menu">
     <p class="prompt">Bir seçenek seç, hemen ileteyim.</p>
     <div class="options">
-      <button class="opt" onclick="reminder()">
+      <button class="opt" onclick="show('reminder')">
         <span class="num">1</span>
-        <span><span class="label">Hatırlatma bırak</span><div class="desc">Kılıç'a "seni ara" bildirimi gider</div></span>
+        <span><span class="label">Hatırlatma bırak</span><div class="desc">Not ve numara ekleyebilirsin</div></span>
       </button>
       <button class="opt" onclick="show('record')">
         <span class="num">2</span>
@@ -177,6 +177,15 @@
       </button>
     </div>
     <p class="hint">Ses internet üzerinden iletilir · ücretsiz</p>
+  </div>
+
+  <!-- HATIRLATMA (not + numara) -->
+  <div class="screen" id="reminder">
+    <p class="prompt">İstersen bir not ve numara ekle, Kılıç görsün.</p>
+    <textarea class="phone-input" id="remNote" rows="3" placeholder="Notun (isteğe bağlı)&#10;örn: Toplantı için aradım, müsait olunca dönebilir misin?" style="resize:none; text-align:left; letter-spacing:normal; font-size:15px; line-height:1.4"></textarea>
+    <input class="phone-input" id="remPhone" type="tel" inputmode="tel" placeholder="Numaran (isteğe bağlı)" maxlength="20">
+    <button class="btn btn-amber" onclick="reminder()">Hatırlatmayı gönder</button>
+    <button class="back" onclick="show('menu')">← Geri dön</button>
   </div>
 
   <!-- SESLİ MESAJ -->
@@ -220,9 +229,19 @@
     show('done');
   }
 
-  // 1 — Hatırlatma
+  // 1 — Hatırlatma (not + numara isteğe bağlı)
   async function reminder(){
-    try { await fetch('/api/reminder', {method:'POST'}); } catch(e){}
+    const note = document.getElementById('remNote').value.trim();
+    const phone = document.getElementById('remPhone').value.trim();
+    try {
+      await fetch('/api/reminder', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ note, phone })
+      });
+    } catch(e){}
+    document.getElementById('remNote').value = '';
+    document.getElementById('remPhone').value = '';
     done('Hatırlatma iletildi', 'Kılıç seni araması için bilgilendirildi.', '📌');
   }
 
