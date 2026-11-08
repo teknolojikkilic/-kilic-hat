@@ -199,10 +199,15 @@
         </div>
         <div data-pane="linux" hidden>
           <div class="row">
-            <button id="copyLinuxCmd" class="btn btn-ghost btn-sm">Terminal komutunu kopyala</button>
-            <a id="agentDlLinux" class="btn btn-ghost btn-sm" href="#" download="ekran-kontrol.sh">⬇ Programı indir (.sh)</a>
+            <button id="copyInstallCmd" class="btn btn-primary btn-sm">Bir kez kur — komutu kopyala</button>
           </div>
-          <div class="small" style="margin-top:6px">Terminali aç (Ctrl+Alt+T), komutu yapıştır (Ctrl+Shift+V), Enter. Ya da indirip <code>bash ~/İndirilenler/ekran-kontrol.sh</code>. Bir kez sudo şifresi ister; Wayland ve X11'de çalışır.</div>
+          <div class="small" style="margin-top:6px"><b>Önerilen.</b> Terminali aç (Ctrl+Alt+T), komutu yapıştır (Ctrl+Shift+V), Enter (ya da Ctrl+J). Bir kez şifre sorar. Sonra program her açılışta kendiliğinden çalışır, bir daha komut gerekmez: sadece "Ekranımı Paylaş"a basman yeter.</div>
+          <div class="row" style="margin-top:10px">
+            <button id="copyLinuxCmd" class="btn btn-ghost btn-sm">Sadece bu seferlik</button>
+            <a id="agentDlLinux" class="btn btn-ghost btn-sm" href="#" download="ekran-kontrol.sh">⬇ İndir (.sh)</a>
+            <button id="copyRemoveCmd" class="btn btn-ghost btn-sm">Kaldır</button>
+          </div>
+          <div class="small" style="margin-top:6px">"Sadece bu seferlik" hiçbir şey kurmaz, terminal kapanınca biter. "Kaldır" kalıcı kurulumu ve verilen izni siler. Wayland ve X11'de çalışır.</div>
         </div>
       </div>
       <div id="surfaceWarn" class="warn" hidden>Kontrol için "Tüm ekran" paylaşılmalı. Pencere/sekme paylaşırken fare yanlış yere gider.</div>

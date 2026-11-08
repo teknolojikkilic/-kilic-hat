@@ -95,6 +95,22 @@ app.get('/kontrol.sh', (req, res) => {
   }).send(body);
 });
 
+// Kalıcı kurulum: bir kez çalıştırılır, program her açılışta kendiliğinden başlar
+const linuxInstall = fs.readFileSync(path.join(__dirname, 'agent', 'kurulum-linux.sh'), 'utf8');
+const linuxRemove = fs.readFileSync(path.join(__dirname, 'agent', 'kaldir-linux.sh'), 'utf8');
+
+app.get('/kur.sh', (req, res) => {
+  const t = String(req.query.t || '');
+  if (!TOKEN_RE.test(t)) return res.status(400).send('echo "Geçersiz bağlantı"\n');
+  const py = linuxPy.replace(/__WSURL__/g, wsUrlFor(req)).replace(/__TOKEN__/g, t);
+  const body = linuxInstall.replace('__PYTHON__', () => py.replace(/\n$/, ''));
+  res.set({ 'Cache-Control': 'no-store', 'Content-Type': 'text/x-shellscript; charset=utf-8' }).send(body);
+});
+
+app.get('/kaldir.sh', (_req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'Content-Type': 'text/x-shellscript; charset=utf-8' }).send(linuxRemove);
+});
+
 // ---------- Durum ----------
 // sharers: socketId -> { id, code, name, startedAt, viewers:Set, relay:Set, token, w, h, surface,
 //                        autoAllow, controllers:Set, pending:Set }

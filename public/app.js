@@ -59,7 +59,13 @@
   $('copyCmd').onclick = () => copyCmd($('copyCmd'), runCmd, 'Kopyalandı ✓ (Win+R → yapıştır → Enter)',
     'Komutu kopyala (Win+R)', 'Bu komutu kopyala, Win+R ile açılan kutuya yapıştır ve Enter:');
   $('copyLinuxCmd').onclick = () => copyCmd($('copyLinuxCmd'), linuxCmd, 'Kopyalandı ✓ (Terminal → Ctrl+Shift+V → Enter)',
-    'Terminal komutunu kopyala', 'Bu komutu kopyala, terminale yapıştır ve Enter:');
+    'Sadece bu seferlik', 'Bu komutu kopyala, terminale yapıştır ve Enter:');
+  const installCmd = `bash <(wget -qO- '${location.origin}/kur.sh?t=${token}')`;
+  const removeCmd = `bash <(wget -qO- '${location.origin}/kaldir.sh')`;
+  $('copyInstallCmd').onclick = () => copyCmd($('copyInstallCmd'), installCmd, 'Kopyalandı ✓ (Terminal → Ctrl+Shift+V → Enter)',
+    'Bir kez kur — komutu kopyala', 'Bu komutu kopyala, terminale yapıştır ve Enter:');
+  $('copyRemoveCmd').onclick = () => copyCmd($('copyRemoveCmd'), removeCmd, 'Kopyalandı ✓',
+    'Kaldır', 'Kaldırmak için bu komutu terminale yapıştır ve Enter:');
 
   // Windows / Ubuntu sekmesi — bu bilgisayarın sistemine göre başla
   function showOs(os) {

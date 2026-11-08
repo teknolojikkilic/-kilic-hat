@@ -24,6 +24,7 @@ import urllib.parse
 WS_URL = '__WSURL__'
 TOKEN = '__TOKEN__'
 DRY_RUN = os.environ.get('EKRAN_DRYRUN') == '1'
+SERVICE = os.environ.get('EKRAN_SERVICE') == '1'  # kalıcı kurulum (arka plan servisi)
 
 
 def log(s):
@@ -568,6 +569,7 @@ def main():
         log('/dev/uinput bulunamadı. "sudo modprobe uinput" çalıştırıp tekrar dene.')
         sys.exit(1)
 
+    delay = 3
     try:
         while True:
             ws = None
@@ -575,6 +577,7 @@ def main():
                 ws = WebSocket(WS_URL)
                 ws.send({'t': 'hello', 'token': TOKEN, 'screens': [{'w': m[0], 'h': m[1], 'primary': m[4]} for m in MONITORS]})
                 log('Sunucuya bağlandı.')
+                delay = 3
                 while True:
                     msg = ws.recv()
                     if msg is None:
@@ -584,16 +587,23 @@ def main():
                     except Exception as e:  # tek bir hatalı mesaj programı durdurmasın
                         log('Hata: %s' % e)
                 if ws.close_code == 4003:
-                    log('Kontrol programı başka bir pencerede açıldı. Bu pencere kapanıyor.')
-                    return
-                log('Bağlantı kapandı.')
+                    if not SERVICE:
+                        log('Kontrol programı başka bir pencerede açıldı. Bu pencere kapanıyor.')
+                        return
+                    # Kalıcı kurulum: tek seferlik pencere kapanınca görevi geri al
+                    log('Kontrol başka bir pencerede açıldı. 1 dakika sonra görev geri alınacak.')
+                    delay = 60
+                else:
+                    log('Bağlantı kapandı.')
             except (OSError, ssl.SSLError) as e:
                 log('Bağlantı koptu: %s' % e)
             finally:
                 if ws:
                     ws.close()
-            log('3 saniye sonra yeniden bağlanılıyor...')
-            time.sleep(3)
+            log('%d saniye sonra yeniden bağlanılıyor...' % delay)
+            time.sleep(delay)
+            if delay < 60:
+                delay = min(30, delay * 2)
     except KeyboardInterrupt:
         print()
         log('Kapatıldı, kontrol bitti.')
