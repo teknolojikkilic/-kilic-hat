@@ -1,328 +1,136 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="tr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Kılıç'a Ulaş</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ekran Paylaş</title>
+<meta name="theme-color" content="#0d0f14">
 <style>
-  :root {
-    --bg: #0e1116;
-    --panel: #161b22;
-    --line: #232a34;
-    --text: #e8eaed;
-    --muted: #8b95a3;
-    --amber: #f0a742;
-    --amber-dim: #7a5a24;
-    --green: #3fb98a;
-    --red: #e2604f;
+  :root{
+    --bg:#0d0f14; --panel:#161a22; --line:#262c38; --text:#e9edf3; --mute:#8b94a5;
+    --accent:#4ade80; --accent-ink:#06210f; --danger:#f87171; --live:#ef4444;
+    --r:14px;
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    min-height: 100dvh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    overflow: hidden;
-  }
-  .device {
-    width: 100%;
-    max-width: 380px;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 28px;
-    padding: 32px 24px 28px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-    position: relative;
-  }
-  .status-dot {
-    position: absolute; top: 22px; right: 24px;
-    display: flex; align-items: center; gap: 7px;
-    font-size: 11px; color: var(--muted); letter-spacing: 0.5px;
-  }
-  .status-dot::before {
-    content: ''; width: 7px; height: 7px; border-radius: 50%;
-    background: var(--green); box-shadow: 0 0 8px var(--green);
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  button{font:inherit;cursor:pointer;border:0;border-radius:10px}
+  .wrap{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
+  .brand{font-weight:700;font-size:18px;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--mute)}
+  .dot.on{background:var(--accent);box-shadow:0 0 0 4px rgba(74,222,128,.15)}
+  .name{display:flex;align-items:center;gap:8px;color:var(--mute);font-size:13px}
+  .name input{background:var(--panel);border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:7px 10px;width:140px;font:inherit}
 
-  .header { text-align: center; margin-bottom: 28px; }
-  .avatar {
-    width: 68px; height: 68px; margin: 0 auto 14px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--amber), var(--amber-dim));
-    display: flex; align-items: center; justify-content: center;
-    font-size: 28px; font-weight: 700; color: #1a1200;
-  }
-  .name { font-size: 20px; font-weight: 600; letter-spacing: 0.3px; }
-  .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:22px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px}
+  .hero h1{margin:0 0 4px;font-size:22px}
+  .hero p{margin:0;color:var(--mute);max-width:520px}
+  .btn{padding:13px 20px;font-weight:650;display:inline-flex;align-items:center;gap:8px}
+  .btn-primary{background:var(--accent);color:var(--accent-ink)}
+  .btn-primary:hover{filter:brightness(1.07)}
+  .btn-danger{background:var(--danger);color:#2a0606}
+  .btn-ghost{background:#1f2430;color:var(--text);border:1px solid var(--line)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .note{color:var(--mute);font-size:13px;margin-top:10px}
 
-  /* Ekranlar */
-  .screen { display: none; }
-  .screen.active { display: block; animation: fade 0.35s ease; }
-  @keyframes fade { from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:translateY(0)} }
+  .mine{display:none;margin-top:16px;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--r);padding:14px;gap:14px;align-items:center;flex-wrap:wrap}
+  .mine.show{display:flex}
+  .mine video{width:220px;max-width:100%;border-radius:10px;background:#000;aspect-ratio:16/9}
+  .live{display:inline-flex;align-items:center;gap:6px;color:var(--live);font-weight:700;font-size:13px}
+  .live::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--live);animation:p 1.4s infinite}
+  @keyframes p{50%{opacity:.3}}
 
-  .prompt {
-    text-align: center; font-size: 14px; color: var(--muted);
-    margin-bottom: 22px; line-height: 1.5;
-  }
+  h2{font-size:15px;color:var(--mute);font-weight:600;margin:26px 0 10px}
+  .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;
+    text-align:left;color:var(--text);display:flex;flex-direction:column;gap:6px}
+  .card:hover{border-color:#3a4252}
+  .card.active{border-color:var(--accent)}
+  .card .who{font-weight:650}
+  .card .meta{color:var(--mute);font-size:13px}
+  .empty{color:var(--mute);background:var(--panel);border:1px dashed var(--line);
+    border-radius:12px;padding:20px;text-align:center}
 
-  .options { display: flex; flex-direction: column; gap: 12px; }
-  .opt {
-    display: flex; align-items: center; gap: 16px;
-    background: var(--bg); border: 1px solid var(--line);
-    border-radius: 16px; padding: 16px 18px;
-    cursor: pointer; transition: all 0.2s;
-    width: 100%; text-align: left; color: var(--text);
-    font-size: 15px; font-family: inherit;
+  /* İzleme ekranı */
+  .viewer{display:none;margin-top:18px;background:#000;border:1px solid var(--line);
+    border-radius:var(--r);overflow:hidden;position:relative}
+  .viewer.show{display:block}
+  .vbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px;
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  .vbar .title{font-weight:650;margin-right:auto;padding-left:4px;display:flex;align-items:center;gap:10px}
+  .vbar button{background:#1f2430;color:var(--text);border:1px solid var(--line);padding:7px 11px;font-size:13px}
+  .vbar button.sel{border-color:var(--accent);color:var(--accent)}
+  .stage{position:relative;height:min(72vh,720px);overflow:hidden;touch-action:none;cursor:grab;background:#000}
+  .stage.drag{cursor:grabbing}
+  .stage video{position:absolute;left:50%;top:50%;transform-origin:center center;
+    max-width:none;max-height:none;user-select:none;-webkit-user-drag:none}
+  .status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--mute);pointer-events:none;text-align:center;padding:20px}
+  .viewer:fullscreen .stage{height:calc(100vh - 52px)}
+  .zoomval{color:var(--mute);font-size:12px;min-width:42px;text-align:center}
+  @media (max-width:600px){
+    .hero h1{font-size:19px}
+    .stage{height:60vh}
+    .name input{width:110px}
   }
-  .opt:active { transform: scale(0.97); border-color: var(--amber); }
-  .opt .num {
-    width: 38px; height: 38px; flex-shrink: 0;
-    border-radius: 11px; background: rgba(240,167,66,0.12);
-    color: var(--amber); font-size: 18px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .opt .label { font-weight: 500; }
-  .opt .desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-  .back {
-    background: none; border: none; color: var(--muted);
-    font-size: 13px; cursor: pointer; margin-top: 20px;
-    display: block; margin-left: auto; margin-right: auto;
-    font-family: inherit; padding: 8px;
-  }
-
-  /* Kayıt ekranı */
-  .rec-circle {
-    width: 120px; height: 120px; margin: 10px auto 24px;
-    border-radius: 50%; border: 2px solid var(--line);
-    display: flex; align-items: center; justify-content: center;
-    position: relative; transition: all 0.3s;
-  }
-  .rec-circle.recording { border-color: var(--red); }
-  .rec-circle.recording::after {
-    content: ''; position: absolute; inset: -8px;
-    border-radius: 50%; border: 2px solid var(--red);
-    opacity: 0; animation: ring 1.5s infinite;
-  }
-  @keyframes ring { 0%{opacity:0.6; transform:scale(1)} 100%{opacity:0; transform:scale(1.25)} }
-  .mic-icon { font-size: 44px; }
-  .timer { text-align: center; font-size: 22px; font-weight: 600; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
-
-  /* Numara ekranı */
-  .phone-input {
-    width: 100%; background: var(--bg); border: 1px solid var(--line);
-    border-radius: 14px; padding: 16px; color: var(--text);
-    font-size: 18px; text-align: center; letter-spacing: 1px;
-    font-family: inherit; margin-bottom: 16px;
-  }
-  .phone-input:focus { outline: none; border-color: var(--amber); }
-
-  .btn {
-    width: 100%; border: none; border-radius: 14px;
-    padding: 16px; font-size: 16px; font-weight: 600;
-    cursor: pointer; font-family: inherit; transition: all 0.2s;
-  }
-  .btn:active { transform: scale(0.97); }
-  .btn-amber { background: var(--amber); color: #1a1200; }
-  .btn-red { background: var(--red); color: #fff; }
-  .btn-ghost { background: var(--bg); color: var(--text); border: 1px solid var(--line); }
-  .btn + .btn { margin-top: 10px; }
-
-  /* Sonuç ekranı */
-  .result { text-align: center; padding: 16px 0; }
-  .result .icon {
-    width: 72px; height: 72px; margin: 0 auto 18px;
-    border-radius: 50%; background: rgba(63,185,138,0.12);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 34px;
-  }
-  .result h2 { font-size: 19px; margin-bottom: 8px; }
-  .result p { font-size: 14px; color: var(--muted); line-height: 1.5; }
-
-  .hint { font-size: 11px; color: var(--muted); text-align: center; margin-top: 18px; opacity: 0.6; }
 </style>
 </head>
 <body>
-<div class="device">
-  <div class="status-dot">ÇEVRİMİÇİ</div>
+<div class="wrap">
+  <header>
+    <div class="brand"><span id="conn" class="dot"></span> Ekran Paylaş</div>
+    <label class="name">Adın <input id="name" maxlength="30" placeholder="Misafir"></label>
+  </header>
 
-  <div class="header">
-    <div class="avatar">K</div>
-    <div class="name">Kılıç</div>
-    <div class="sub">Otomatik karşılama hattı</div>
-  </div>
-
-  <!-- ANA MENÜ -->
-  <div class="screen active" id="menu">
-    <p class="prompt">Bir seçenek seç, hemen ileteyim.</p>
-    <div class="options">
-      <button class="opt" onclick="show('reminder')">
-        <span class="num">1</span>
-        <span><span class="label">Hatırlatma bırak</span><div class="desc">Not ve numara ekleyebilirsin</div></span>
-      </button>
-      <button class="opt" onclick="show('record')">
-        <span class="num">2</span>
-        <span><span class="label">Sesli mesaj bırak</span><div class="desc">Sesini kaydet, doğrudan iletsin</div></span>
-      </button>
-      <button class="opt" onclick="show('callback')">
-        <span class="num">3</span>
-        <span><span class="label">Görüşmek istiyorum</span><div class="desc">Numaranı bırak, Kılıç seni arasın</div></span>
-      </button>
+  <section class="hero">
+    <div>
+      <h1>Ekranını tek tıkla paylaş</h1>
+      <p>Oda kodu yok. Paylaştığın an, bu siteyi açan herkes ekranını görür.</p>
+      <div id="support" class="note"></div>
     </div>
-    <p class="hint">Ses internet üzerinden iletilir · ücretsiz</p>
-  </div>
+    <button id="shareBtn" class="btn btn-primary">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4M12 7v6M9 10l3-3 3 3"/></svg>
+      Ekranımı Paylaş
+    </button>
+  </section>
 
-  <!-- HATIRLATMA (not + numara) -->
-  <div class="screen" id="reminder">
-    <p class="prompt">İstersen bir not ve numara ekle, Kılıç görsün.</p>
-    <textarea class="phone-input" id="remNote" rows="3" placeholder="Notun (isteğe bağlı)&#10;örn: Toplantı için aradım, müsait olunca dönebilir misin?" style="resize:none; text-align:left; letter-spacing:normal; font-size:15px; line-height:1.4"></textarea>
-    <input class="phone-input" id="remPhone" type="tel" inputmode="tel" placeholder="Numaran (isteğe bağlı)" maxlength="20">
-    <button class="btn btn-amber" onclick="reminder()">Hatırlatmayı gönder</button>
-    <button class="back" onclick="show('menu')">← Geri dön</button>
-  </div>
-
-  <!-- SESLİ MESAJ -->
-  <div class="screen" id="record">
-    <div class="rec-circle" id="recCircle"><span class="mic-icon">🎙️</span></div>
-    <div class="timer" id="timer">00:00</div>
-    <p class="prompt" id="recHint">Kaydı başlatmak için butona bas.</p>
-    <button class="btn btn-red" id="recBtn" onclick="toggleRec()">Kaydı başlat</button>
-    <button class="btn btn-ghost" id="sendBtn" onclick="sendVoice()" style="display:none">Mesajı gönder</button>
-    <button class="back" onclick="resetRec()">← Geri dön</button>
-  </div>
-
-  <!-- GERİ ARAMA -->
-  <div class="screen" id="callback">
-    <p class="prompt">Numaranı yaz, Kılıç en kısa sürede dönsün.</p>
-    <input class="phone-input" id="phone" type="tel" inputmode="tel" placeholder="05XX XXX XX XX" maxlength="20">
-    <button class="btn btn-amber" onclick="callback()">Gönder</button>
-    <button class="back" onclick="show('menu')">← Geri dön</button>
-  </div>
-
-  <!-- SONUÇ -->
-  <div class="screen" id="done">
-    <div class="result">
-      <div class="icon" id="doneIcon">✓</div>
-      <h2 id="doneTitle">İletildi</h2>
-      <p id="doneText">Kılıç bilgilendirildi.</p>
+  <section id="mine" class="mine">
+    <video id="localVideo" autoplay muted playsinline></video>
+    <div style="flex:1;min-width:180px">
+      <div class="live">YAYINDA</div>
+      <div id="viewerCount" style="margin:6px 0 10px;color:var(--mute)">0 kişi izliyor</div>
+      <button id="stopBtn" class="btn btn-danger">Paylaşımı Durdur</button>
     </div>
-    <button class="btn btn-ghost" onclick="show('menu')" style="margin-top:20px">Başa dön</button>
-  </div>
+  </section>
+
+  <section id="viewer" class="viewer">
+    <div class="vbar">
+      <div class="title"><span class="live">CANLI</span><span id="watchName">—</span></div>
+      <button data-fit="contain" class="sel" title="Ekrana sığdır">Sığdır</button>
+      <button data-fit="cover" title="Ekranı doldur">Doldur</button>
+      <button data-fit="actual" title="Gerçek boyut">1:1</button>
+      <button id="zoomOut" title="Uzaklaş">−</button>
+      <span id="zoomVal" class="zoomval">100%</span>
+      <button id="zoomIn" title="Yakınlaş">+</button>
+      <button id="soundBtn" title="Ses">🔇 Ses</button>
+      <button id="fsBtn" title="Tam ekran">⛶ Tam ekran</button>
+      <button id="closeBtn" title="Kapat">✕</button>
+    </div>
+    <div id="stage" class="stage">
+      <video id="remoteVideo" autoplay playsinline muted></video>
+      <div id="vstatus" class="status">Bağlanıyor…</div>
+    </div>
+  </section>
+
+  <h2>Şu an paylaşılan ekranlar</h2>
+  <div id="list" class="list"></div>
 </div>
 
-<script>
-  function show(id){
-    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-  }
-  function done(title, text, icon){
-    document.getElementById('doneTitle').textContent = title;
-    document.getElementById('doneText').textContent = text;
-    document.getElementById('doneIcon').textContent = icon || '✓';
-    show('done');
-  }
-
-  // 1 — Hatırlatma (not + numara isteğe bağlı)
-  async function reminder(){
-    const note = document.getElementById('remNote').value.trim();
-    const phone = document.getElementById('remPhone').value.trim();
-    try {
-      await fetch('/api/reminder', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ note, phone })
-      });
-    } catch(e){}
-    document.getElementById('remNote').value = '';
-    document.getElementById('remPhone').value = '';
-    done('Hatırlatma iletildi', 'Kılıç seni araması için bilgilendirildi.', '📌');
-  }
-
-  // 3 — Geri arama
-  async function callback(){
-    const phone = document.getElementById('phone').value.trim();
-    if(phone.length < 7){ alert('Lütfen geçerli bir numara yaz.'); return; }
-    try { await fetch('/api/callback', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone})}); } catch(e){}
-    done('Kılıç seni arayacak', 'Numaran iletildi, en kısa sürede dönecek.', '📞');
-  }
-
-  // 2 — Ses kaydı
-  let mediaRecorder, chunks = [], stream, seconds = 0, timerInt, audioBlob;
-
-  async function toggleRec(){
-    if(mediaRecorder && mediaRecorder.state === 'recording'){
-      mediaRecorder.stop();
-      return;
-    }
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({audio:true});
-    } catch(e){
-      alert('Mikrofon izni gerekli. Tarayıcı ayarlarından izin ver.');
-      return;
-    }
-    chunks = [];
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = e => chunks.push(e.data);
-    mediaRecorder.onstop = () => {
-      audioBlob = new Blob(chunks, {type:'audio/webm'});
-      stream.getTracks().forEach(t=>t.stop());
-      clearInterval(timerInt);
-      document.getElementById('recCircle').classList.remove('recording');
-      document.getElementById('recBtn').style.display='none';
-      document.getElementById('sendBtn').style.display='block';
-      document.getElementById('recHint').textContent='Kaydı gönderebilir ya da geri dönüp yeniden kaydedebilirsin.';
-    };
-    mediaRecorder.start();
-    seconds = 0;
-    document.getElementById('recCircle').classList.add('recording');
-    document.getElementById('recBtn').textContent='Durdur';
-    document.getElementById('recHint').textContent='Konuş... bitince durdura bas.';
-    timerInt = setInterval(()=>{
-      seconds++;
-      const m = String(Math.floor(seconds/60)).padStart(2,'0');
-      const s = String(seconds%60).padStart(2,'0');
-      document.getElementById('timer').textContent = `${m}:${s}`;
-      if(seconds >= 120) mediaRecorder.stop(); // maks 2 dk
-    }, 1000);
-  }
-
-  async function sendVoice(){
-    if(!audioBlob) return;
-    document.getElementById('sendBtn').textContent = 'Gönderiliyor...';
-    const fd = new FormData();
-    fd.append('audio', audioBlob, 'mesaj.webm');
-    try {
-      await fetch('/api/voice', {method:'POST', body: fd});
-      done('Sesli mesaj iletildi', 'Kılıç mesajını dinleyecek.', '🎙️');
-    } catch(e){
-      alert('Gönderilemedi, tekrar dene.');
-      document.getElementById('sendBtn').textContent = 'Mesajı gönder';
-    }
-    resetRecState();
-  }
-
-  function resetRec(){
-    if(mediaRecorder && mediaRecorder.state==='recording') mediaRecorder.stop();
-    resetRecState();
-    show('menu');
-  }
-  function resetRecState(){
-    seconds = 0; audioBlob = null; chunks = [];
-    clearInterval(timerInt);
-    document.getElementById('timer').textContent = '00:00';
-    document.getElementById('recCircle').classList.remove('recording');
-    document.getElementById('recBtn').style.display='block';
-    document.getElementById('recBtn').textContent='Kaydı başlat';
-    document.getElementById('sendBtn').style.display='none';
-    document.getElementById('recHint').textContent='Kaydı başlatmak için butona bas.';
-  }
-</script>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/app.js"></script>
 </body>
 </html>
