@@ -2,18 +2,23 @@
   const $ = id => document.getElementById(id);
   const socket = io({ transports: ['websocket', 'polling'] });
 
-  const ICE = {
+  let ICE = {
     iceServers: [
       { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
       { urls: 'stun:stun.cloudflare.com:3478' }
     ]
   };
+  fetch('/ice').then(r => r.json()).then(c => { if (c && c.iceServers) ICE = c; }).catch(() => {});
+
+  const RELAY_AFTER_MS = 7000; // doğrudan bağlantı bu sürede kurulmazsa sunucu yoluna geç
 
   // ---------- Durum ----------
   let myStream = null;          // paylaştığım ekran
   const sharePeers = new Map(); // viewerId -> RTCPeerConnection (paylaşan taraf)
   let watchPeer = null;         // izleyici tarafı bağlantı
   let watchingId = null;
+  let relayMode = false;        // görüntü sunucu üzerinden mi geliyor
+  let relayTimer = null;
   let userClosed = false;       // kullanıcı izlemeyi bilerek kapattıysa otomatik açma
   let sharers = [];
   const pendingIce = new Map(); // peerId -> [candidates]
@@ -36,6 +41,8 @@
   socket.on('connect', () => {
     $('conn').classList.add('on');
     if (myStream) socket.emit('start-share', { name: nameInput.value });
+    // Bağlantı koptuysa ve bir ekranı izliyorsak, kaldığımız yerden devam et
+    if (watchingId) watch(watchingId, true);
   });
   socket.on('disconnect', () => $('conn').classList.remove('on'));
 
@@ -76,7 +83,7 @@
       meta.className = 'meta';
       meta.textContent = `${ago(s.startedAt)} başladı · ${s.viewers} izleyici`;
       b.append(who, meta);
-      b.onclick = () => { userClosed = false; watch(s.id); };
+      b.onclick = () => { userClosed = false; watch(s.id, true); };
       el.appendChild(b);
     }
   }
@@ -117,6 +124,8 @@
     if (!myStream) return;
     myStream.getTracks().forEach(t => t.stop());
     myStream = null;
+    relayCount = 0;
+    tick(0);
     for (const pc of sharePeers.values()) pc.close();
     sharePeers.clear();
     $('localVideo').srcObject = null;
@@ -160,31 +169,138 @@
     sharePeers.delete(viewerId);
   });
 
+  // ---------- Yedek yol: kareleri sunucu üzerinden gönder (paylaşan taraf) ----------
+  // Sekme arka plandayken de düzgün çalışsın diye zamanlayıcı bir Worker'da.
+  let relayCount = 0;
+  let relayBusy = false;
+  const ticker = new Worker(URL.createObjectURL(new Blob(
+    ['let t;onmessage=e=>{clearInterval(t);if(e.data>0)t=setInterval(()=>postMessage(0),e.data)}'],
+    { type: 'text/javascript' })));
+  const tick = ms => ticker.postMessage(ms);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  let grabber = null;
+
+  socket.on('relay-count', ({ n }) => {
+    relayCount = n;
+    if (myStream && n > 0) {
+      const track = myStream.getVideoTracks()[0];
+      grabber = ('ImageCapture' in window && track) ? new ImageCapture(track) : null;
+      tick(100); // en fazla ~10 kare/sn
+    } else tick(0);
+  });
+
+  ticker.onmessage = async () => {
+    if (relayBusy || !myStream || relayCount <= 0) return;
+    relayBusy = true;
+    try {
+      let src = null, w = 0, h = 0;
+      if (grabber) {
+        try { src = await grabber.grabFrame(); w = src.width; h = src.height; } catch { src = null; }
+      }
+      if (!src) {
+        const lv = $('localVideo');
+        src = lv; w = lv.videoWidth; h = lv.videoHeight;
+      }
+      if (w && h) {
+        const sc = Math.min(1, 1600 / w);
+        canvas.width = Math.round(w * sc);
+        canvas.height = Math.round(h * sc);
+        ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
+        if (src.close) src.close();
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.65));
+        if (blob) {
+          const buf = await blob.arrayBuffer();
+          await new Promise(r => {
+            const to = setTimeout(r, 3000);
+            socket.emit('frame', buf, () => { clearTimeout(to); r(); });
+          });
+        }
+      }
+    } catch {}
+    relayBusy = false;
+  };
+
   // ---------- İzleme ----------
-  function watch(sharerId) {
-    if (sharerId === watchingId && watchPeer) return;
-    stopWatching(false);
+  const video = $('remoteVideo');
+  const img = $('relayImg');
+
+  function watch(sharerId, force) {
+    if (!force && sharerId === watchingId && (watchPeer || relayMode)) return;
+    teardownWatch();
     watchingId = sharerId;
     const s = sharers.find(x => x.id === sharerId);
     $('watchName').textContent = s ? s.name : 'Ekran';
-    $('vstatus').textContent = 'Bağlanıyor…';
-    $('vstatus').style.display = '';
+    setStatus('Bağlanıyor…');
     $('viewer').classList.add('show');
     resetView();
     socket.emit('watch', { sharerId });
+    relayTimer = setTimeout(() => {
+      if (!watchPeer || watchPeer.connectionState !== 'connected') startRelay();
+    }, RELAY_AFTER_MS);
     renderList();
   }
 
-  function stopWatching(notify) {
+  function teardownWatch() {
+    clearTimeout(relayTimer);
     if (watchPeer) { watchPeer.close(); watchPeer = null; }
-    const v = $('remoteVideo');
-    v.srcObject = null;
+    relayMode = false;
+    imgLoading = false;
+    video.srcObject = null;
+    video.style.display = '';
+    img.style.display = 'none';
+    img.removeAttribute('src');
+    if (lastUrl) { URL.revokeObjectURL(lastUrl); lastUrl = null; }
+    $('soundBtn').disabled = false;
+    $('mode').textContent = '';
+  }
+
+  function stopWatching(notify) {
+    teardownWatch();
     if (watchingId && notify !== false) socket.emit('unwatch');
     watchingId = null;
-    $('viewer').classList.remove('show');
+    $('viewer').classList.remove('show', 'pseudo-fs');
+    document.body.classList.remove('noscroll');
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     renderList();
   }
+
+  function setStatus(t) {
+    const el = $('vstatus');
+    el.textContent = t || '';
+    el.style.display = t ? '' : 'none';
+  }
+
+  function startRelay() {
+    if (relayMode || !watchingId) return;
+    clearTimeout(relayTimer);
+    if (watchPeer) { watchPeer.close(); watchPeer = null; }
+    relayMode = true;
+    video.srcObject = null;
+    video.style.display = 'none';
+    img.style.display = '';
+    $('soundBtn').disabled = true; // yedek yolda ses yok
+    $('mode').textContent = 'Sunucu üzerinden';
+    setStatus('Doğrudan bağlantı kurulamadı, sunucu üzerinden bağlanılıyor…');
+    socket.emit('relay-on', { sharerId: watchingId });
+  }
+
+  // Yedek yoldan gelen kareler
+  let lastUrl = null, imgLoading = false;
+  socket.on('frame', buf => {
+    if (!relayMode || imgLoading) return; // önceki kare yüklenmeden yenisini atla
+    imgLoading = true;
+    const url = URL.createObjectURL(new Blob([buf], { type: 'image/jpeg' }));
+    img.onload = () => {
+      if (lastUrl) URL.revokeObjectURL(lastUrl);
+      lastUrl = url;
+      imgLoading = false;
+      setStatus('');
+      layout();
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); imgLoading = false; };
+    img.src = url;
+  });
 
   $('closeBtn').onclick = () => { userClosed = true; stopWatching(true); };
 
@@ -205,23 +321,20 @@
       return;
     }
     // İzleyici taraf: paylaşandan gelen teklif / ice
-    if (from !== watchingId) return;
+    if (from !== watchingId || relayMode) return;
     if (data.sdp && data.sdp.type === 'offer') {
       if (watchPeer) watchPeer.close();
       const pc = new RTCPeerConnection(ICE);
       watchPeer = pc;
       pc.ontrack = e => {
-        const v = $('remoteVideo');
-        if (v.srcObject !== e.streams[0]) v.srcObject = e.streams[0];
-        v.play().catch(() => {});
+        if (video.srcObject !== e.streams[0]) video.srcObject = e.streams[0];
+        video.play().catch(() => {});
       };
       pc.onicecandidate = e => e.candidate && socket.emit('signal', { to: from, data: { ice: e.candidate } });
       pc.onconnectionstatechange = () => {
         if (pc !== watchPeer) return;
-        if (pc.connectionState === 'failed') {
-          $('vstatus').style.display = '';
-          $('vstatus').textContent = 'Bağlantı kurulamadı. Ağ engelliyor olabilir — tekrar denemek için karta dokun.';
-        }
+        if (pc.connectionState === 'connected') clearTimeout(relayTimer);
+        if (pc.connectionState === 'failed') startRelay();
       };
       await pc.setRemoteDescription(data.sdp);
       flushIce(from, pc);
@@ -247,30 +360,31 @@
 
   // ---------- Görüntü kontrolleri (sığdır / doldur / 1:1, yakınlaş, kaydır) ----------
   const stage = $('stage');
-  const video = $('remoteVideo');
   const view = { fit: 'contain', zoom: 1, x: 0, y: 0 };
 
   function layout() {
-    const vw = video.videoWidth, vh = video.videoHeight;
+    const el = relayMode ? img : video;
+    const vw = relayMode ? img.naturalWidth : video.videoWidth;
+    const vh = relayMode ? img.naturalHeight : video.videoHeight;
     if (!vw || !vh) return;
     const sw = stage.clientWidth, sh = stage.clientHeight;
-    let base = view.fit === 'cover' ? Math.max(sw / vw, sh / vh)
-             : view.fit === 'actual' ? 1 / (window.devicePixelRatio || 1)
-             : Math.min(sw / vw, sh / vh);
+    const base = view.fit === 'cover' ? Math.max(sw / vw, sh / vh)
+               : view.fit === 'actual' ? 1 / (window.devicePixelRatio || 1)
+               : Math.min(sw / vw, sh / vh);
     const w = vw * base * view.zoom, h = vh * base * view.zoom;
     const mx = Math.max(0, (w - sw) / 2), my = Math.max(0, (h - sh) / 2);
     view.x = Math.min(mx, Math.max(-mx, view.x));
     view.y = Math.min(my, Math.max(-my, view.y));
-    video.style.width = w + 'px';
-    video.style.height = h + 'px';
-    video.style.transform = `translate(calc(-50% + ${view.x}px), calc(-50% + ${view.y}px))`;
+    el.style.width = w + 'px';
+    el.style.height = h + 'px';
+    el.style.transform = `translate(calc(-50% + ${view.x}px), calc(-50% + ${view.y}px))`;
     $('zoomVal').textContent = Math.round(view.zoom * 100) + '%';
   }
 
   function resetView() { view.zoom = 1; view.x = 0; view.y = 0; layout(); }
   function setZoom(z) { view.zoom = Math.min(8, Math.max(0.25, z)); layout(); }
 
-  video.addEventListener('loadedmetadata', () => { $('vstatus').style.display = 'none'; layout(); });
+  video.addEventListener('loadedmetadata', () => { setStatus(''); layout(); });
   video.addEventListener('resize', layout);
   window.addEventListener('resize', layout);
   document.addEventListener('fullscreenchange', () => setTimeout(layout, 50));
@@ -294,9 +408,18 @@
 
   $('fsBtn').onclick = () => {
     const el = $('viewer');
-    if (document.fullscreenElement) document.exitFullscreen();
-    else if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
-    else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen(); // iPhone
+    if (document.fullscreenElement) { document.exitFullscreen(); return; }
+    if (el.classList.contains('pseudo-fs')) {
+      el.classList.remove('pseudo-fs');
+      document.body.classList.remove('noscroll');
+    } else if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    } else {
+      // iPhone: gerçek tam ekran sadece videoya izin veriyor; kontroller kalsın diye sayfayı kaplıyoruz
+      el.classList.add('pseudo-fs');
+      document.body.classList.add('noscroll');
+    }
+    setTimeout(layout, 50);
   };
 
   stage.addEventListener('wheel', e => {

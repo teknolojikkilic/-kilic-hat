@@ -66,11 +66,16 @@
   .vbar button.sel{border-color:var(--accent);color:var(--accent)}
   .stage{position:relative;height:min(72vh,720px);overflow:hidden;touch-action:none;cursor:grab;background:#000}
   .stage.drag{cursor:grabbing}
-  .stage video{position:absolute;left:50%;top:50%;transform-origin:center center;
+  .stage video,.stage img{position:absolute;left:50%;top:50%;transform-origin:center center;
     max-width:none;max-height:none;user-select:none;-webkit-user-drag:none}
   .status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     color:var(--mute);pointer-events:none;text-align:center;padding:20px}
   .viewer:fullscreen .stage{height:calc(100vh - 52px)}
+  .viewer.pseudo-fs{position:fixed;inset:0;z-index:50;margin:0;border-radius:0;border:0;display:flex;flex-direction:column}
+  .viewer.pseudo-fs .stage{flex:1;height:auto}
+  body.noscroll{overflow:hidden}
+  .vbar button:disabled{opacity:.4;cursor:not-allowed}
+  .mode{color:var(--mute);font-size:12px;font-weight:500}
   .zoomval{color:var(--mute);font-size:12px;min-width:42px;text-align:center}
   @media (max-width:600px){
     .hero h1{font-size:19px}
@@ -109,7 +114,7 @@
 
   <section id="viewer" class="viewer">
     <div class="vbar">
-      <div class="title"><span class="live">CANLI</span><span id="watchName">—</span></div>
+      <div class="title"><span class="live">CANLI</span><span id="watchName">—</span><span id="mode" class="mode"></span></div>
       <button data-fit="contain" class="sel" title="Ekrana sığdır">Sığdır</button>
       <button data-fit="cover" title="Ekranı doldur">Doldur</button>
       <button data-fit="actual" title="Gerçek boyut">1:1</button>
@@ -122,6 +127,7 @@
     </div>
     <div id="stage" class="stage">
       <video id="remoteVideo" autoplay playsinline muted></video>
+      <img id="relayImg" alt="" draggable="false" style="display:none">
       <div id="vstatus" class="status">Bağlanıyor…</div>
     </div>
   </section>
