@@ -54,6 +54,10 @@
   .warn{color:var(--warn);font-size:13px}
   .check{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
   .check input{width:18px;height:18px;accent-color:var(--accent)}
+  .seg{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:10px}
+  .seg button{background:transparent;color:var(--mute);padding:6px 12px;font-size:13px;font-weight:600;border-radius:7px}
+  .seg button.on{background:var(--key);color:var(--text)}
+  code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:12px}
   .req{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#221d0c;border:1px solid #5b4a12;
     border-radius:10px;padding:8px 10px}
   .req b{margin-right:auto}
@@ -181,10 +185,24 @@
       <h3>Uzaktan fare ve klavye</h3>
       <div class="agent"><span id="agentDot" class="dot"></span><span id="agentText">Kontrol programı çalışmıyor</span></div>
       <div id="agentSetup">
-        <div class="small" style="margin-bottom:8px">Başkası bu bilgisayarı kontrol edebilsin diye küçük bir program çalışmalı (Windows, kurulum yok). İndir, çift tıkla, pencere açık kalsın.</div>
-        <div class="row">
-          <a id="agentDl" class="btn btn-ghost btn-sm" href="#" download="ekran-kontrol.bat">⬇ Kontrol programını indir</a>
-          <button id="copyCmd" class="btn btn-ghost btn-sm" title="Win+R'ye yapıştır, Enter">Komutu kopyala (Win+R)</button>
+        <div class="small" style="margin-bottom:8px">Başkası bu bilgisayarı kontrol edebilsin diye küçük bir program çalışmalı (kurulum yok). Pencere açık kaldıkça çalışır.</div>
+        <div class="seg" role="tablist">
+          <button data-os="win" class="on">Windows</button>
+          <button data-os="linux">Ubuntu / Linux</button>
+        </div>
+        <div data-pane="win">
+          <div class="row">
+            <a id="agentDl" class="btn btn-ghost btn-sm" href="#" download="ekran-kontrol.bat">⬇ Programı indir (.bat)</a>
+            <button id="copyCmd" class="btn btn-ghost btn-sm">Komutu kopyala (Win+R)</button>
+          </div>
+          <div class="small" style="margin-top:6px">İndirdiğin dosyaya çift tıkla. Ya da komutu Win+R'ye yapıştırıp Enter'a bas.</div>
+        </div>
+        <div data-pane="linux" hidden>
+          <div class="row">
+            <button id="copyLinuxCmd" class="btn btn-ghost btn-sm">Terminal komutunu kopyala</button>
+            <a id="agentDlLinux" class="btn btn-ghost btn-sm" href="#" download="ekran-kontrol.sh">⬇ Programı indir (.sh)</a>
+          </div>
+          <div class="small" style="margin-top:6px">Terminali aç (Ctrl+Alt+T), komutu yapıştır (Ctrl+Shift+V), Enter. Ya da indirip <code>bash ~/İndirilenler/ekran-kontrol.sh</code>. Bir kez sudo şifresi ister; Wayland ve X11'de çalışır.</div>
         </div>
       </div>
       <div id="surfaceWarn" class="warn" hidden>Kontrol için "Tüm ekran" paylaşılmalı. Pencere/sekme paylaşırken fare yanlış yere gider.</div>

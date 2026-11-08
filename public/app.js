@@ -45,15 +45,29 @@
   }
   $('agentDl').href = `/kontrol.bat?t=${token}`;
   const runCmd = `powershell -ep bypass -c "[Net.ServicePointManager]::SecurityProtocol='Tls12';irm '${location.origin}/kontrol.ps1?t=${token}'|iex"`;
-  $('copyCmd').onclick = async () => {
+  const linuxCmd = `bash <(wget -qO- '${location.origin}/kontrol.sh?t=${token}')`;
+  $('agentDlLinux').href = `/kontrol.sh?t=${token}`;
+  async function copyCmd(btn, text, done, label, hint) {
     try {
-      await navigator.clipboard.writeText(runCmd);
-      $('copyCmd').textContent = 'Kopyalandı ✓ (Win+R → yapıştır → Enter)';
-      setTimeout(() => { $('copyCmd').textContent = 'Komutu kopyala (Win+R)'; }, 4000);
+      await navigator.clipboard.writeText(text);
+      btn.textContent = done;
+      setTimeout(() => { btn.textContent = label; }, 4000);
     } catch {
-      window.prompt('Bu komutu kopyala, Win+R ile açılan kutuya yapıştır ve Enter:', runCmd);
+      window.prompt(hint, text);
     }
-  };
+  }
+  $('copyCmd').onclick = () => copyCmd($('copyCmd'), runCmd, 'Kopyalandı ✓ (Win+R → yapıştır → Enter)',
+    'Komutu kopyala (Win+R)', 'Bu komutu kopyala, Win+R ile açılan kutuya yapıştır ve Enter:');
+  $('copyLinuxCmd').onclick = () => copyCmd($('copyLinuxCmd'), linuxCmd, 'Kopyalandı ✓ (Terminal → Ctrl+Shift+V → Enter)',
+    'Terminal komutunu kopyala', 'Bu komutu kopyala, terminale yapıştır ve Enter:');
+
+  // Windows / Ubuntu sekmesi — bu bilgisayarın sistemine göre başla
+  function showOs(os) {
+    document.querySelectorAll('[data-os]').forEach(b => b.classList.toggle('on', b.dataset.os === os));
+    document.querySelectorAll('[data-pane]').forEach(p => { p.hidden = p.dataset.pane !== os; });
+  }
+  document.querySelectorAll('[data-os]').forEach(b => { b.onclick = () => showOs(b.dataset.os); });
+  if (/Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent)) showOs('linux');
 
   const autoAllowBox = $('autoAllow');
   autoAllowBox.checked = store.get('ekran-auto') !== '0'; // varsayılan: kodu bilen sormadan kontrol eder

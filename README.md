@@ -11,9 +11,12 @@ Kodla ekran paylaşma ve uzaktan kontrol. "Ekranımı Paylaş"a basınca 8 hanel
 - İsteğe bağlı TURN: Render'da `TURN_URLS`, `TURN_USERNAME`, `TURN_CREDENTIAL` ortam değişkenleri.
 
 ## Uzaktan fare ve klavye
-Tarayıcı bilgisayarın gerçek faresini/klavyesini kontrol edemediği için paylaşan Windows bilgisayarda küçük bir program çalışır (`agent/kontrol.ps1`, kurulum yok):
+Tarayıcı bilgisayarın gerçek faresini/klavyesini kontrol edemediği için paylaşan bilgisayarda küçük bir program çalışır (kurulum yok):
 
-1. Paylaşırken sayfadaki **Kontrol programını indir**'e bas, `ekran-kontrol.bat`'ı çift tıkla (ya da **Komutu kopyala**, Win+R'ye yapıştır).
+- **Windows** (`agent/kontrol.ps1`): `ekran-kontrol.bat`'ı çift tıkla ya da Win+R komutunu yapıştır.
+- **Ubuntu / Linux** (`agent/kontrol-linux.py` + `.sh`): terminale `bash <(wget -qO- '…/kontrol.sh?t=…')` yapıştır. Çekirdeğin sanal fare/klavyesini (`/dev/uinput`) kullandığı için Wayland ve X11'de çalışır, bir kez sudo şifresi ister. Klavye düzeni (Türkçe Q/F vb.) otomatik okunur, izin kutusu zenity ile açılır.
+
+1. Paylaşırken paneldeki Windows ya da Ubuntu sekmesinden programı başlat.
 2. İzleyen kişi **🖱 Kontrol**'e basar. Varsayılan olarak kodu bilen sormadan kontrol eder. Paneldeki kutucuk kapatılırsa bilgisayarda en üstte izin kutusu çıkar.
 3. Pencere açık kaldıkça çalışır. Kapatınca kontrol biter.
 

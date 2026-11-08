@@ -74,6 +74,27 @@ app.get('/kontrol.bat', (req, res) => {
   }).send(Buffer.from(body, 'utf8')); // BOM yok: cmd ilk satırı bozulmadan okusun
 });
 
+// ---------- Linux (Ubuntu) kontrol programı ----------
+const linuxPy = fs.readFileSync(path.join(__dirname, 'agent', 'kontrol-linux.py'), 'utf8');
+const linuxSh = fs.readFileSync(path.join(__dirname, 'agent', 'kontrol-linux.sh'), 'utf8');
+
+function wsUrlFor(req) {
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+  return `${proto === 'https' ? 'wss' : 'ws'}://${req.headers.host}/agent`;
+}
+
+app.get('/kontrol.sh', (req, res) => {
+  const t = String(req.query.t || '');
+  if (!TOKEN_RE.test(t)) return res.status(400).send('echo "Geçersiz bağlantı"\n');
+  const py = linuxPy.replace(/__WSURL__/g, wsUrlFor(req)).replace(/__TOKEN__/g, t);
+  const body = linuxSh.replace('__PYTHON__', () => py.replace(/\n$/, ''));
+  res.set({
+    'Cache-Control': 'no-store',
+    'Content-Type': 'text/x-shellscript; charset=utf-8',
+    'Content-Disposition': 'attachment; filename="ekran-kontrol.sh"'
+  }).send(body);
+});
+
 // ---------- Durum ----------
 // sharers: socketId -> { id, code, name, startedAt, viewers:Set, relay:Set, token, w, h, surface,
 //                        autoAllow, controllers:Set, pending:Set }
