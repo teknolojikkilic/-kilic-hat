@@ -62,6 +62,15 @@
   @media (max-width:700px){ .remote{border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:12px} }
 
   h2{font-size:15px;color:var(--mute);font-weight:600;margin:26px 0 10px}
+  .join{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:18px 22px;display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+  .join h3{margin:0;font-size:16px;flex:1 1 100%}
+  .join input{flex:1 1 200px;min-width:0;background:var(--bg);border:1px solid var(--line);color:var(--text);
+    border-radius:10px;padding:12px 14px;font:inherit;font-size:22px;letter-spacing:4px;font-variant-numeric:tabular-nums;text-align:center}
+  .join input:focus{outline:none;border-color:var(--accent)}
+  .join .err{flex:1 1 100%;color:var(--danger);font-size:14px;min-height:1px}
+  .codebox{display:flex;flex-direction:column;gap:6px;margin:10px 0 12px}
+  .code{font-size:32px;font-weight:800;letter-spacing:5px;font-variant-numeric:tabular-nums;color:var(--accent);line-height:1.1}
   .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;
     text-align:left;color:var(--text);display:flex;flex-direction:column;gap:6px}
@@ -136,7 +145,7 @@
   <section class="hero">
     <div>
       <h1>Ekranını tek tıkla paylaş</h1>
-      <p>Oda kodu yok. Paylaştığın an, bu siteyi açan herkes ekranını görür. İstersen telefondan ya da başka bilgisayardan fare ve klavyeyle kontrol de edilebilir.</p>
+      <p>Paylaşınca 8 haneli bir kod çıkar. Kodu verdiğin kişi ekranını izler, istersen fare ve klavyeyle kontrol de eder.</p>
       <div id="support" class="note"></div>
     </div>
     <button id="shareBtn" class="btn btn-primary">
@@ -145,11 +154,26 @@
     </button>
   </section>
 
+  <section id="joinBox" class="join">
+    <h3>Kodla izle</h3>
+    <input id="codeInput" inputmode="numeric" autocomplete="off" maxlength="9" placeholder="1234 5678" aria-label="8 haneli kod">
+    <button id="joinBtn" class="btn btn-primary">İzle</button>
+    <div id="joinErr" class="err"></div>
+  </section>
+
   <section id="mine" class="mine">
     <video id="localVideo" autoplay muted playsinline></video>
     <div style="flex:0 1 200px;min-width:170px">
       <div class="live">YAYINDA</div>
-      <div id="viewerCount" style="margin:6px 0 10px;color:var(--mute)">0 kişi izliyor</div>
+      <div class="codebox">
+        <span class="small">İzleme kodu</span>
+        <span id="myCode" class="code">—</span>
+        <div class="row">
+          <button id="copyCode" class="btn btn-ghost btn-sm">Kodu kopyala</button>
+          <button id="copyLink" class="btn btn-ghost btn-sm">Linki kopyala</button>
+        </div>
+      </div>
+      <div id="viewerCount" style="margin:0 0 10px;color:var(--mute)">Henüz kimse izlemiyor</div>
       <button id="stopBtn" class="btn btn-danger">Paylaşımı Durdur</button>
     </div>
 
@@ -164,7 +188,8 @@
         </div>
       </div>
       <div id="surfaceWarn" class="warn" hidden>Kontrol için "Tüm ekran" paylaşılmalı. Pencere/sekme paylaşırken fare yanlış yere gider.</div>
-      <label class="check"><input type="checkbox" id="autoAllow"> Sormadan izin ver <span class="small">(bilgisayarın başında değilsen)</span></label>
+      <label class="check"><input type="checkbox" id="autoAllow"> Kodu bilen sormadan kontrol edebilsin</label>
+      <div class="small" style="margin-top:-6px">Kapatırsan her kontrol isteğinde bilgisayarda izin kutusu çıkar.</div>
       <div id="ctrlRequests"></div>
       <div id="ctrlList"></div>
     </div>
@@ -217,8 +242,6 @@
     <div id="help" class="help"></div>
   </section>
 
-  <h2>Şu an paylaşılan ekranlar</h2>
-  <div id="list" class="list"></div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>

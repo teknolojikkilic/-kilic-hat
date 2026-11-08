@@ -25,8 +25,9 @@
   let watchingId = null;
   let relayMode = false;        // görüntü sunucu üzerinden mi geliyor
   let relayTimer = null;
-  let userClosed = false;       // kullanıcı izlemeyi bilerek kapattıysa otomatik açma
-  let sharers = [];
+  let myCode = null;            // paylaşırken aldığım 8 haneli kod
+  let watchCode = null;         // izlediğim paylaşımın kodu
+  let rejoinTimer = null;
   const pendingIce = new Map(); // peerId -> [candidates]
 
   // ---------- İsim ----------
@@ -55,7 +56,7 @@
   };
 
   const autoAllowBox = $('autoAllow');
-  autoAllowBox.checked = store.get('ekran-auto') === '1';
+  autoAllowBox.checked = store.get('ekran-auto') !== '0'; // varsayılan: kodu bilen sormadan kontrol eder
   autoAllowBox.onchange = () => {
     store.set('ekran-auto', autoAllowBox.checked ? '1' : '0');
     socket.emit('share-settings', { autoAllow: autoAllowBox.checked });
@@ -72,59 +73,61 @@
   socket.on('connect', () => {
     $('conn').classList.add('on');
     if (myStream) emitStartShare();
-    // Bağlantı koptuysa ve bir ekranı izliyorsak, kaldığımız yerden devam et
-    if (watchingId) watch(watchingId, true);
+    // Bağlantı koptuysa ve bir ekranı izliyorsak, aynı kodla kaldığımız yerden devam et
+    if (watchCode) join(watchCode, { silent: true });
   });
   socket.on('disconnect', () => $('conn').classList.remove('on'));
 
-  socket.on('sharers', list => {
-    sharers = list;
-    renderList();
-    const me = list.find(s => s.id === socket.id);
-    if (me) $('viewerCount').textContent = `${me.viewers} kişi izliyor`;
-    autoWatch();
+  // ---------- Kodla katıl ----------
+  const codeInput = $('codeInput');
+  const fmt = c => c.length > 4 ? c.slice(0, 4) + ' ' + c.slice(4) : c;
+  codeInput.addEventListener('input', () => {
+    const d = codeInput.value.replace(/\D/g, '').slice(0, 8);
+    codeInput.value = fmt(d);
+    $('joinErr').textContent = '';
+    if (d.length === 8) join(d);
   });
+  codeInput.addEventListener('keydown', e => { if (e.key === 'Enter') join(codeInput.value); });
+  $('joinBtn').onclick = () => join(codeInput.value);
 
-  // ---------- Liste ----------
-  function ago(t) {
-    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
-    if (s < 60) return 'az önce';
-    const m = Math.round(s / 60);
-    return m < 60 ? `${m} dk önce` : `${Math.round(m / 60)} sa önce`;
+  function join(raw, opts = {}) {
+    const code = String(raw || '').replace(/\D/g, '');
+    if (code.length !== 8) { $('joinErr').textContent = '8 haneli kodu gir.'; return; }
+    if (myStream) { $('joinErr').textContent = 'Paylaşım açıkken izleyemezsin. Önce paylaşımı durdur.'; return; }
+    clearTimeout(rejoinTimer);
+    $('joinBtn').disabled = true;
+    socket.emit('join', { code, name: nameInput.value }, res => {
+      $('joinBtn').disabled = false;
+      if (res && res.ok) {
+        $('joinErr').textContent = '';
+        watchCode = code;
+        startWatching(res.sharerId, res.name);
+        try { history.replaceState(null, '', '?kod=' + code); } catch {}
+        return;
+      }
+      if (res && res.retry && (opts.tries || 0) < 20) {
+        // Paylaşanın bağlantısı koptu; aynı kodla geri gelmesini bekle
+        setStatus('Paylaşan yeniden bağlanıyor…');
+        rejoinTimer = setTimeout(() => join(code, { silent: true, tries: (opts.tries || 0) + 1 }), 3000);
+        return;
+      }
+      if (opts.silent) {
+        stopWatching(false);
+        toastOut('Paylaşım bitti.');
+      }
+      $('joinErr').textContent = (res && res.error) || 'Bağlanılamadı.';
+    });
   }
 
-  function renderList() {
-    const el = $('list');
-    el.innerHTML = '';
-    const others = sharers.filter(s => s.id !== socket.id);
-    if (!others.length) {
-      const d = document.createElement('div');
-      d.className = 'empty';
-      d.textContent = myStream ? 'Senden başka paylaşan yok.' : 'Şu an kimse ekran paylaşmıyor. İlk sen paylaş!';
-      el.appendChild(d);
-      return;
-    }
-    for (const s of others) {
-      const b = document.createElement('button');
-      b.className = 'card' + (s.id === watchingId ? ' active' : '');
-      const who = document.createElement('div');
-      who.className = 'who';
-      who.textContent = s.name;
-      const meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.textContent = `${ago(s.startedAt)} başladı · ${s.viewers} izleyici` + (s.control ? ' · 🖱 kontrol açık' : '');
-      b.append(who, meta);
-      b.onclick = () => { userClosed = false; watch(s.id, true); };
-      el.appendChild(b);
-    }
+  function toastOut(t) {
+    $('joinErr').textContent = t;
   }
-  setInterval(renderList, 30000);
 
-  function autoWatch() {
-    if (myStream || userClosed) return;
-    if (watchingId && sharers.some(s => s.id === watchingId)) return;
-    const others = sharers.filter(s => s.id !== socket.id);
-    if (others.length) watch(others[others.length - 1].id);
+  // Linkle gelindiyse (?kod=12345678) doğrudan katıl
+  const urlCode = (new URLSearchParams(location.search).get('kod') || '').replace(/\D/g, '');
+  if (urlCode.length === 8) {
+    codeInput.value = fmt(urlCode);
+    if (socket.connected) join(urlCode); else socket.once('connect', () => { if (!watchCode) join(urlCode); });
   }
 
   // =====================================================================
@@ -138,9 +141,27 @@
       w: st.width || 0,
       h: st.height || 0,
       surface: st.displaySurface || '',
-      autoAllow: autoAllowBox.checked
+      autoAllow: autoAllowBox.checked,
+      code: myCode // bağlantı kopup geldiyse aynı kodu iste
+    }, res => {
+      if (!res || !res.code) return;
+      myCode = res.code;
+      $('myCode').textContent = fmt(myCode);
     });
   }
+
+  const shareLink = () => `${location.origin}/?kod=${myCode}`;
+  async function copyText(t, btn, label) {
+    try { await navigator.clipboard.writeText(t); btn.textContent = 'Kopyalandı ✓'; }
+    catch { window.prompt('Kopyala:', t); }
+    setTimeout(() => { btn.textContent = label; }, 2500);
+  }
+  $('copyCode').onclick = () => myCode && copyText(myCode, $('copyCode'), 'Kodu kopyala');
+  $('copyLink').onclick = () => myCode && copyText(shareLink(), $('copyLink'), 'Linki kopyala');
+
+  socket.on('viewers', ({ n, names }) => {
+    $('viewerCount').textContent = n ? `${n} kişi izliyor: ${names.join(', ')}` : 'Henüz kimse izlemiyor';
+  });
 
   $('shareBtn').onclick = async () => {
     try {
@@ -157,6 +178,9 @@
     vt.addEventListener('ended', stopShare);
 
     stopWatching(true);
+    myCode = null;
+    $('myCode').textContent = '…';
+    $('joinBox').hidden = true;
     $('localVideo').srcObject = myStream;
     $('mine').classList.add('show');
     $('shareBtn').disabled = true;
@@ -177,8 +201,8 @@
     $('mine').classList.remove('show');
     $('shareBtn').disabled = !canShare;
     socket.emit('stop-share');
-    userClosed = false;
-    autoWatch();
+    myCode = null;
+    $('joinBox').hidden = false;
   }
 
   socket.on('viewer-joined', async ({ viewerId }) => {
@@ -315,20 +339,18 @@
   const video = $('remoteVideo');
   const img = $('relayImg');
 
-  function watch(sharerId, force) {
-    if (!force && sharerId === watchingId && (watchPeer || relayMode)) return;
+  // Sunucu kodu kabul ettikten sonra çağrılır; paylaşan bize bağlantı teklifini gönderir
+  function startWatching(sharerId, name) {
     teardownWatch();
     watchingId = sharerId;
-    const s = sharers.find(x => x.id === sharerId);
-    $('watchName').textContent = s ? s.name : 'Ekran';
+    $('watchName').textContent = name || 'Ekran';
     setStatus('Bağlanıyor…');
     $('viewer').classList.add('show');
     resetView();
-    socket.emit('watch', { sharerId, name: nameInput.value });
     relayTimer = setTimeout(() => {
       if (!watchPeer || watchPeer.connectionState !== 'connected') startRelay();
     }, RELAY_AFTER_MS);
-    renderList();
+    setTimeout(() => $('viewer').scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
 
   function teardownWatch() {
@@ -350,10 +372,12 @@
     teardownWatch();
     if (watchingId && notify !== false) socket.emit('unwatch');
     watchingId = null;
+    watchCode = null;
+    clearTimeout(rejoinTimer);
     $('viewer').classList.remove('show', 'pseudo-fs');
     document.body.classList.remove('noscroll');
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    renderList();
+    try { if (location.search) history.replaceState(null, '', location.pathname); } catch {}
   }
 
   function setStatus(t) {
@@ -382,7 +406,7 @@
     $('soundBtn').disabled = true; // yedek yolda ses yok
     $('mode').textContent = 'Sunucu üzerinden';
     setStatus('Doğrudan bağlantı kurulamadı, sunucu üzerinden bağlanılıyor…');
-    socket.emit('relay-on', { sharerId: watchingId });
+    socket.emit('relay-on');
   }
 
   // Yedek yoldan gelen kareler
@@ -402,12 +426,26 @@
     img.src = url;
   });
 
-  $('closeBtn').onclick = () => { userClosed = true; stopWatching(true); };
+  $('closeBtn').onclick = () => stopWatching(true);
 
-  socket.on('share-ended', ({ sharerId }) => {
+  socket.on('share-ended', ({ sharerId, reconnecting }) => {
     if (sharerId !== watchingId) return;
+    if (reconnecting && watchCode) {
+      // Paylaşanın bağlantısı koptu: aynı kodla geri gelince otomatik devam
+      const code = watchCode;
+      teardownWatch();
+      watchCode = code;
+      setStatus('Paylaşan yeniden bağlanıyor…');
+      rejoinTimer = setTimeout(() => join(code, { silent: true, tries: 1 }), 3000);
+      return;
+    }
     stopWatching(false);
-    autoWatch();
+    toastOut('Paylaşım bitti.');
+  });
+
+  socket.on('control-available', ({ agent }) => {
+    $('ctrlBtn').title = agent ? 'Fare ve klavyeyle kontrol et' : 'Paylaşan bilgisayarda kontrol programı çalışmıyor';
+    $('ctrlBtn').style.opacity = agent || ctrlState !== 'off' ? '' : '.55';
   });
 
   socket.on('signal', async ({ from, data }) => {

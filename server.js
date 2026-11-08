@@ -1,4 +1,5 @@
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const http = require('http');
 const express = require('express');
@@ -74,24 +75,40 @@ app.get('/kontrol.bat', (req, res) => {
 });
 
 // ---------- Durum ----------
-// sharers: socketId -> { id, name, startedAt, viewers:Set, relay:Set, token, w, h, surface,
+// sharers: socketId -> { id, code, name, startedAt, viewers:Set, relay:Set, token, w, h, surface,
 //                        autoAllow, controllers:Set, pending:Set }
 const sharers = new Map();
+const codes = new Map();  // 8 haneli kod -> sharer socketId
 const agents = new Map(); // token -> ws
+const CODE_RE = /^\d{8}$/;
 
-function publicList() {
-  return [...sharers.values()].map(s => ({
-    id: s.id,
-    name: s.name,
-    startedAt: s.startedAt,
-    viewers: s.viewers.size,
-    control: hasAgent(s)
-  }));
+function newCode() {
+  for (;;) {
+    const c = String(crypto.randomInt(10000000, 100000000));
+    if (!codes.has(c)) return c;
+  }
 }
 
-function broadcastList() {
-  io.emit('sharers', publicList());
+// Kod tahminine karşı: IP başına dakikada en fazla 15 yanlış deneme
+const attempts = new Map(); // ip -> { n, until }
+function clientIp(socket) {
+  const xf = socket.handshake.headers['x-forwarded-for'];
+  return (xf ? String(xf).split(',')[0] : socket.handshake.address || '').trim();
 }
+function tooMany(ip) {
+  const a = attempts.get(ip);
+  return !!(a && a.until > Date.now() && a.n >= 15);
+}
+function failAttempt(ip) {
+  const now = Date.now();
+  const a = attempts.get(ip);
+  if (!a || a.until < now) attempts.set(ip, { n: 1, until: now + 60000 });
+  else a.n++;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, a] of attempts) if (a.until < now) attempts.delete(ip);
+}, 60000);
 
 function cleanName(n) {
   const s = String(n || '').replace(/[<>]/g, '').trim().slice(0, 30);
@@ -113,6 +130,13 @@ function nameOf(id) {
   return (so && so.data.name) || 'Misafir';
 }
 
+function sendViewers(s) {
+  io.to(s.id).emit('viewers', {
+    n: s.viewers.size,
+    names: [...s.viewers].map(nameOf)
+  });
+}
+
 function sendControlInfo(s) {
   io.to(s.id).emit('control-info', {
     agent: hasAgent(s),
@@ -120,6 +144,8 @@ function sendControlInfo(s) {
     controllers: [...s.controllers].map(id => ({ id, name: nameOf(id) })),
     pending: [...s.pending].map(id => ({ id, name: nameOf(id) }))
   });
+  // İzleyenler kontrolün mümkün olup olmadığını bilsin
+  for (const v of s.viewers) io.to(v).emit('control-available', { agent: hasAgent(s) });
 }
 
 function setControl(viewerId, state, msg) {
@@ -158,6 +184,7 @@ function leaveAsViewer(socket) {
     if (s.relay.delete(socket.id)) sendRelayCount(s);
     dropControl(s, socket.id);
     io.to(target).emit('viewer-left', { viewerId: socket.id });
+    sendViewers(s);
   }
   socket.data.watching = null;
 }
@@ -166,21 +193,31 @@ function sendRelayCount(s) {
   io.to(s.id).emit('relay-count', { n: s.relay.size });
 }
 
-function stopSharing(socket) {
+function stopSharing(socket, keepCode) {
   const s = sharers.get(socket.id);
   if (!s) return;
   for (const id of s.pending) toAgent(s, { t: 'close-ask', id });
   if (s.controllers.size) toAgent(s, { t: 'info', s: 'Paylaşım bitti, kontrol kapandı.' });
-  for (const v of s.viewers) io.to(v).emit('share-ended', { sharerId: socket.id });
+  for (const v of s.viewers) {
+    io.to(v).emit('share-ended', { sharerId: socket.id, reconnecting: !!keepCode });
+    const vs = io.sockets.sockets.get(v);
+    if (vs) vs.data.watching = null;
+  }
   sharers.delete(socket.id);
-  broadcastList();
+  if (codes.get(s.code) !== socket.id) return;
+  if (!keepCode) codes.delete(s.code);
+  else {
+    // Paylaşan sadece bağlantısı koptuysa aynı kodla geri dönebilsin diye kodu kısa süre ayır
+    codes.set(s.code, null);
+    setTimeout(() => { if (codes.get(s.code) === null) codes.delete(s.code); }, 60000);
+  }
 }
 
 function sharersWithToken(token) {
   return [...sharers.values()].filter(s => s.token === token);
 }
 
-// Kontrol programından gelen girdiyi doğrula, sadece bilinen alanları geçir
+// İzleyiciden gelen girdiyi doğrula, sadece bilinen alanları geçir
 function cleanInput(m) {
   if (!m || typeof m !== 'object') return null;
   const n = (v, a, b) => Math.min(b, Math.max(a, Number(v) || 0));
@@ -203,13 +240,29 @@ function cleanInput(m) {
 
 io.on('connection', socket => {
   socket.data.name = 'Misafir';
-  socket.emit('sharers', publicList());
+  const ip = clientIp(socket);
 
-  socket.on('start-share', ({ name, token, w, h, surface, autoAllow } = {}) => {
+  socket.on('start-share', ({ name, token, w, h, surface, autoAllow, code } = {}, ack) => {
     leaveAsViewer(socket);
+    stopSharing(socket);
     socket.data.name = cleanName(name);
+    // Bağlantı kopup geri gelen paylaşan aynı kodu korur (kod boştaysa)
+    const prev = String(code || '');
+    let reuse = false;
+    if (CODE_RE.test(prev) && codes.has(prev)) {
+      const owner = codes.get(prev);
+      const old = owner && sharers.get(owner);
+      if (owner === null) reuse = true;
+      else if (old && old.token && old.token === token) {
+        // Aynı tarayıcı, eski bağlantı henüz düşmeden geri geldi: kodu devral
+        const oldSock = io.sockets.sockets.get(owner);
+        if (oldSock) stopSharing(oldSock, true);
+        reuse = codes.get(prev) === null;
+      }
+    }
     const s = {
       id: socket.id,
+      code: reuse ? prev : newCode(),
       name: socket.data.name,
       startedAt: Date.now(),
       viewers: new Set(),
@@ -223,9 +276,11 @@ io.on('connection', socket => {
       pending: new Set()
     };
     sharers.set(socket.id, s);
+    codes.set(s.code, socket.id);
     toAgent(s, { t: 'meta', w: s.w, h: s.h });
+    if (typeof ack === 'function') ack({ code: s.code });
+    sendViewers(s);
     sendControlInfo(s);
-    broadcastList();
   });
 
   socket.on('share-settings', ({ autoAllow } = {}) => {
@@ -237,25 +292,30 @@ io.on('connection', socket => {
 
   socket.on('stop-share', () => stopSharing(socket));
 
-  socket.on('watch', ({ sharerId, name } = {}) => {
-    if (sharerId === socket.id) return;
+  // Kodla izlemeye katıl
+  socket.on('join', ({ code, name } = {}, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    if (tooMany(ip)) return reply({ ok: false, error: 'Çok fazla yanlış deneme. Bir dakika sonra tekrar dene.' });
+    const c = String(code || '').replace(/\D/g, '');
+    const sid = CODE_RE.test(c) ? codes.get(c) : undefined;
+    const s = sid && sharers.get(sid);
+    if (!s) {
+      if (!(CODE_RE.test(c) && codes.get(c) === null)) failAttempt(ip); // paylaşan sadece yeniden bağlanıyorsa sayma
+      return reply({ ok: false, retry: CODE_RE.test(c) && codes.get(c) === null, error: CODE_RE.test(c) && codes.get(c) === null
+        ? 'Paylaşan kişinin bağlantısı koptu, birazdan tekrar dene.'
+        : 'Bu kodla açık bir paylaşım yok. Kodu kontrol et.' });
+    }
+    if (sid === socket.id) return reply({ ok: false, error: 'Bu senin kendi paylaşımın.' });
     if (name !== undefined) socket.data.name = cleanName(name);
     leaveAsViewer(socket);
-    const s = sharers.get(sharerId);
-    if (!s) {
-      socket.emit('share-ended', { sharerId });
-      return;
-    }
     s.viewers.add(socket.id);
-    socket.data.watching = sharerId;
-    io.to(sharerId).emit('viewer-joined', { viewerId: socket.id });
-    broadcastList();
+    socket.data.watching = sid;
+    reply({ ok: true, sharerId: sid, name: s.name, agent: hasAgent(s) });
+    io.to(sid).emit('viewer-joined', { viewerId: socket.id });
+    sendViewers(s);
   });
 
-  socket.on('unwatch', () => {
-    leaveAsViewer(socket);
-    broadcastList();
-  });
+  socket.on('unwatch', () => leaveAsViewer(socket));
 
   // ---------- Uzaktan kontrol ----------
   socket.on('control-request', ({ name } = {}) => {
@@ -301,9 +361,9 @@ io.on('connection', socket => {
   });
 
   // ---------- Yedek görüntü yolu ----------
-  socket.on('relay-on', ({ sharerId } = {}) => {
-    const s = sharers.get(sharerId);
-    if (!s || socket.data.watching !== sharerId) return;
+  socket.on('relay-on', () => {
+    const s = sharers.get(socket.data.watching);
+    if (!s) return;
     s.relay.add(socket.id);
     sendRelayCount(s);
   });
@@ -314,16 +374,17 @@ io.on('connection', socket => {
     if (typeof ack === 'function') ack();
   });
 
-  // WebRTC sinyal aktarımı (offer / answer / ice)
+  // WebRTC sinyal aktarımı — sadece paylaşan ile kendi izleyicileri arasında
   socket.on('signal', ({ to, data } = {}) => {
     if (!to || !data) return;
-    io.to(to).emit('signal', { from: socket.id, data });
+    const mine = sharers.get(socket.id);
+    const ok = (mine && mine.viewers.has(to)) || socket.data.watching === to;
+    if (ok) io.to(to).emit('signal', { from: socket.id, data });
   });
 
   socket.on('disconnect', () => {
     leaveAsViewer(socket);
-    stopSharing(socket);
-    broadcastList();
+    stopSharing(socket, true);
   });
 });
 
@@ -347,7 +408,6 @@ function agentChanged(token) {
     }
     sendControlInfo(s);
   }
-  broadcastList();
 }
 
 wss.on('connection', ws => {
@@ -365,10 +425,10 @@ wss.on('connection', ws => {
       if (old && old !== ws) { old.replaced = true; old.close(4003, 'yeni program bağlandı'); }
       ws.token = m.token;
       agents.set(m.token, ws);
-      const live = sharersWithToken(m.token).length > 0;
+      const live = sharersWithToken(m.token)[0];
       ws.send(JSON.stringify({
         t: 'info',
-        s: live ? 'Paylaşım bulundu, kontrol istekleri bekleniyor.'
+        s: live ? `Paylaşım bulundu (kod ${live.code}). Kontrol istekleri bekleniyor.`
                 : 'Sayfada "Ekranımı Paylaş" ile tüm ekranı paylaşınca kontrol istekleri gelecek.'
       }));
       agentChanged(m.token);

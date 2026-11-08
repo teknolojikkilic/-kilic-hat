@@ -1,6 +1,9 @@
 # Ekran Paylaş
 
-Oda kodu olmadan ekran paylaşma ve uzaktan kontrol. Siteye giren "Ekranımı Paylaş"a basar, siteyi açan herkes o ekranı canlı görür. İstersen telefondan ya da başka bir bilgisayardan fare ve klavyeyle kontrol de edilebilir.
+Kodla ekran paylaşma ve uzaktan kontrol. "Ekranımı Paylaş"a basınca 8 haneli bir kod çıkar. Kodu (ya da `/?kod=12345678` linkini) bilen kişi ekranı canlı izler, fare ve klavyeyle kontrol de edebilir. Kodsuz giren hiçbir şey görmez.
+
+- Kod her paylaşımda yenilenir. Paylaşanın bağlantısı kısa süre koparsa aynı kod korunur, izleyenler otomatik devam eder.
+- Kod tahminine karşı IP başına dakikada en fazla 15 yanlış deneme.
 
 ## İzleme
 - Görüntü WebRTC ile doğrudan akar. 7 saniyede bağlanamazsa otomatik olarak sunucu üzerinden (WebSocket, 443) gelir.
@@ -11,7 +14,7 @@ Oda kodu olmadan ekran paylaşma ve uzaktan kontrol. Siteye giren "Ekranımı Pa
 Tarayıcı bilgisayarın gerçek faresini/klavyesini kontrol edemediği için paylaşan Windows bilgisayarda küçük bir program çalışır (`agent/kontrol.ps1`, kurulum yok):
 
 1. Paylaşırken sayfadaki **Kontrol programını indir**'e bas, `ekran-kontrol.bat`'ı çift tıkla (ya da **Komutu kopyala**, Win+R'ye yapıştır).
-2. İzleyen kişi **🖱 Kontrol**'e basar, bilgisayarda en üstte izin kutusu çıkar.
+2. İzleyen kişi **🖱 Kontrol**'e basar. Varsayılan olarak kodu bilen sormadan kontrol eder. Paneldeki kutucuk kapatılırsa bilgisayarda en üstte izin kutusu çıkar.
 3. Pencere açık kaldıkça çalışır. Kapatınca kontrol biter.
 
 Telefonda: dokun = tıkla, basılı tut = sağ tık, kaydır = sürükle, iki parmak = sayfa kaydır / yakınlaştır, ⌨ = klavye.
