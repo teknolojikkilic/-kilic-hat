@@ -8,41 +8,58 @@
 <style>
   :root{
     --bg:#0d0f14; --panel:#161a22; --line:#262c38; --text:#e9edf3; --mute:#8b94a5;
-    --accent:#4ade80; --accent-ink:#06210f; --danger:#f87171; --live:#ef4444;
-    --r:14px;
+    --accent:#4ade80; --accent-ink:#06210f; --danger:#f87171; --live:#ef4444; --warn:#fbbf24;
+    --key:#1f2430; --r:14px;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
     font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-  button{font:inherit;cursor:pointer;border:0;border-radius:10px}
+  button{font:inherit;cursor:pointer;border:0;border-radius:10px;-webkit-tap-highlight-color:transparent}
+  a{color:var(--accent)}
   .wrap{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
   header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
   .brand{font-weight:700;font-size:18px;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
-  .dot{width:9px;height:9px;border-radius:50%;background:var(--mute)}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--mute);flex:none}
   .dot.on{background:var(--accent);box-shadow:0 0 0 4px rgba(74,222,128,.15)}
   .name{display:flex;align-items:center;gap:8px;color:var(--mute);font-size:13px}
   .name input{background:var(--panel);border:1px solid var(--line);color:var(--text);
-    border-radius:8px;padding:7px 10px;width:140px;font:inherit}
+    border-radius:8px;padding:7px 10px;width:140px;font:inherit;font-size:16px}
 
   .hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
     padding:22px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px}
   .hero h1{margin:0 0 4px;font-size:22px}
-  .hero p{margin:0;color:var(--mute);max-width:520px}
-  .btn{padding:13px 20px;font-weight:650;display:inline-flex;align-items:center;gap:8px}
+  .hero p{margin:0;color:var(--mute);max-width:560px}
+  .btn{padding:13px 20px;font-weight:650;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
   .btn-primary{background:var(--accent);color:var(--accent-ink)}
   .btn-primary:hover{filter:brightness(1.07)}
   .btn-danger{background:var(--danger);color:#2a0606}
-  .btn-ghost{background:#1f2430;color:var(--text);border:1px solid var(--line)}
+  .btn-ghost{background:var(--key);color:var(--text);border:1px solid var(--line)}
+  .btn-sm{padding:8px 12px;font-size:13px;font-weight:600}
   .btn:disabled{opacity:.5;cursor:not-allowed}
   .note{color:var(--mute);font-size:13px;margin-top:10px}
 
   .mine{display:none;margin-top:16px;background:var(--panel);border:1px solid var(--line);
-    border-radius:var(--r);padding:14px;gap:14px;align-items:center;flex-wrap:wrap}
+    border-radius:var(--r);padding:14px;gap:16px;flex-wrap:wrap}
   .mine.show{display:flex}
-  .mine video{width:220px;max-width:100%;border-radius:10px;background:#000;aspect-ratio:16/9}
+  .mine video{width:220px;max-width:100%;border-radius:10px;background:#000;aspect-ratio:16/9;align-self:flex-start}
   .live{display:inline-flex;align-items:center;gap:6px;color:var(--live);font-weight:700;font-size:13px}
   .live::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--live);animation:p 1.4s infinite}
   @keyframes p{50%{opacity:.3}}
+
+  .remote{flex:1 1 320px;border-left:1px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:10px}
+  .remote h3{margin:0;font-size:15px}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .agent{display:flex;align-items:center;gap:8px;font-size:14px}
+  .small{font-size:13px;color:var(--mute)}
+  .warn{color:var(--warn);font-size:13px}
+  .check{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+  .check input{width:18px;height:18px;accent-color:var(--accent)}
+  .req{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#221d0c;border:1px solid #5b4a12;
+    border-radius:10px;padding:8px 10px}
+  .req b{margin-right:auto}
+  .ctl{display:flex;align-items:center;gap:8px;background:#10241a;border:1px solid #1f5135;border-radius:10px;padding:8px 10px}
+  .ctl span{margin-right:auto}
+  @media (max-width:700px){ .remote{border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:12px} }
 
   h2{font-size:15px;color:var(--mute);font-weight:600;margin:26px 0 10px}
   .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
@@ -62,21 +79,46 @@
   .vbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px;
     background:var(--panel);border-bottom:1px solid var(--line)}
   .vbar .title{font-weight:650;margin-right:auto;padding-left:4px;display:flex;align-items:center;gap:10px}
-  .vbar button{background:#1f2430;color:var(--text);border:1px solid var(--line);padding:7px 11px;font-size:13px}
+  .vbar button{background:var(--key);color:var(--text);border:1px solid var(--line);padding:7px 11px;font-size:13px}
   .vbar button.sel{border-color:var(--accent);color:var(--accent)}
+  .vbar button.ctrl-on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+  .vbar button.ctrl-wait{border-color:var(--warn);color:var(--warn)}
   .stage{position:relative;height:min(72vh,720px);overflow:hidden;touch-action:none;cursor:grab;background:#000}
   .stage.drag{cursor:grabbing}
+  .stage.control{cursor:default;box-shadow:inset 0 0 0 2px var(--accent)}
   .stage video,.stage img{position:absolute;left:50%;top:50%;transform-origin:center center;
-    max-width:none;max-height:none;user-select:none;-webkit-user-drag:none}
+    max-width:none;max-height:none;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;
+    -webkit-touch-callout:none}
   .status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     color:var(--mute);pointer-events:none;text-align:center;padding:20px}
-  .viewer:fullscreen .stage{height:calc(100vh - 52px)}
+  .toast{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:rgba(22,26,34,.95);
+    border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13px;max-width:90%;
+    text-align:center;pointer-events:none;opacity:0;transition:opacity .2s;z-index:3}
+  .toast.show{opacity:1}
+  .viewer:fullscreen{display:flex;flex-direction:column}
+  .viewer:fullscreen .stage{flex:1;height:auto}
   .viewer.pseudo-fs{position:fixed;inset:0;z-index:50;margin:0;border-radius:0;border:0;display:flex;flex-direction:column}
   .viewer.pseudo-fs .stage{flex:1;height:auto}
   body.noscroll{overflow:hidden}
   .vbar button:disabled{opacity:.4;cursor:not-allowed}
   .mode{color:var(--mute);font-size:12px;font-weight:500}
   .zoomval{color:var(--mute);font-size:12px;min-width:42px;text-align:center}
+
+  /* Fare / klavye çubuğu */
+  .keys{display:none;position:relative;gap:6px;padding:8px;background:var(--panel);border-top:1px solid var(--line);
+    overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .keys::-webkit-scrollbar{display:none}
+  .keys.show{display:flex}
+  .keys button{flex:none;background:var(--key);color:var(--text);border:1px solid var(--line);
+    min-width:44px;height:40px;padding:0 12px;font-size:14px;font-weight:600}
+  .keys button.latched{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  .keys button.kb{background:#24324a;border-color:#35507a}
+  .keys .sep{flex:none;width:1px;background:var(--line);margin:4px 2px}
+  #kbInput{position:absolute;left:0;bottom:0;width:1px;height:1px;opacity:0;border:0;padding:0;
+    font-size:16px;color:transparent;background:transparent;caret-color:transparent}
+  .help{display:none;padding:6px 10px 8px;background:var(--panel);color:var(--mute);font-size:12px}
+  .help.show{display:block}
+
   @media (max-width:600px){
     .hero h1{font-size:19px}
     .stage{height:60vh}
@@ -94,7 +136,7 @@
   <section class="hero">
     <div>
       <h1>Ekranını tek tıkla paylaş</h1>
-      <p>Oda kodu yok. Paylaştığın an, bu siteyi açan herkes ekranını görür.</p>
+      <p>Oda kodu yok. Paylaştığın an, bu siteyi açan herkes ekranını görür. İstersen telefondan ya da başka bilgisayardan fare ve klavyeyle kontrol de edilebilir.</p>
       <div id="support" class="note"></div>
     </div>
     <button id="shareBtn" class="btn btn-primary">
@@ -105,16 +147,33 @@
 
   <section id="mine" class="mine">
     <video id="localVideo" autoplay muted playsinline></video>
-    <div style="flex:1;min-width:180px">
+    <div style="flex:0 1 200px;min-width:170px">
       <div class="live">YAYINDA</div>
       <div id="viewerCount" style="margin:6px 0 10px;color:var(--mute)">0 kişi izliyor</div>
       <button id="stopBtn" class="btn btn-danger">Paylaşımı Durdur</button>
+    </div>
+
+    <div class="remote">
+      <h3>Uzaktan fare ve klavye</h3>
+      <div class="agent"><span id="agentDot" class="dot"></span><span id="agentText">Kontrol programı çalışmıyor</span></div>
+      <div id="agentSetup">
+        <div class="small" style="margin-bottom:8px">Başkası bu bilgisayarı kontrol edebilsin diye küçük bir program çalışmalı (Windows, kurulum yok). İndir, çift tıkla, pencere açık kalsın.</div>
+        <div class="row">
+          <a id="agentDl" class="btn btn-ghost btn-sm" href="#" download="ekran-kontrol.bat">⬇ Kontrol programını indir</a>
+          <button id="copyCmd" class="btn btn-ghost btn-sm" title="Win+R'ye yapıştır, Enter">Komutu kopyala (Win+R)</button>
+        </div>
+      </div>
+      <div id="surfaceWarn" class="warn" hidden>Kontrol için "Tüm ekran" paylaşılmalı. Pencere/sekme paylaşırken fare yanlış yere gider.</div>
+      <label class="check"><input type="checkbox" id="autoAllow"> Sormadan izin ver <span class="small">(bilgisayarın başında değilsen)</span></label>
+      <div id="ctrlRequests"></div>
+      <div id="ctrlList"></div>
     </div>
   </section>
 
   <section id="viewer" class="viewer">
     <div class="vbar">
       <div class="title"><span class="live">CANLI</span><span id="watchName">—</span><span id="mode" class="mode"></span></div>
+      <button id="ctrlBtn" title="Fare ve klavyeyle kontrol et">🖱 Kontrol</button>
       <button data-fit="contain" class="sel" title="Ekrana sığdır">Sığdır</button>
       <button data-fit="cover" title="Ekranı doldur">Doldur</button>
       <button data-fit="actual" title="Gerçek boyut">1:1</button>
@@ -129,7 +188,33 @@
       <video id="remoteVideo" autoplay playsinline muted></video>
       <img id="relayImg" alt="" draggable="false" style="display:none">
       <div id="vstatus" class="status">Bağlanıyor…</div>
+      <div id="toast" class="toast"></div>
     </div>
+    <div id="keys" class="keys">
+      <button id="kbBtn" class="kb">⌨ Klavye</button>
+      <button data-k="Backspace">⌫</button>
+      <button data-k="Enter">⏎</button>
+      <button id="rightBtn">Sağ tık</button>
+      <span class="sep"></span>
+      <button data-mod="ctrl">Ctrl</button>
+      <button data-mod="alt">Alt</button>
+      <button data-mod="shift">Shift</button>
+      <button data-k="Meta">Win</button>
+      <span class="sep"></span>
+      <button data-k="Escape">Esc</button>
+      <button data-k="Tab">Tab</button>
+      <button data-k="ArrowLeft">←</button>
+      <button data-k="ArrowUp">↑</button>
+      <button data-k="ArrowDown">↓</button>
+      <button data-k="ArrowRight">→</button>
+      <button data-k="Delete">Del</button>
+      <span class="sep"></span>
+      <button data-wheel="240">Kaydır ▲</button>
+      <button data-wheel="-240">Kaydır ▼</button>
+      <input id="kbInput" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
+             spellcheck="false" enterkeyhint="enter" aria-label="Uzak klavye">
+    </div>
+    <div id="help" class="help"></div>
   </section>
 
   <h2>Şu an paylaşılan ekranlar</h2>

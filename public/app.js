@@ -11,6 +11,12 @@
   fetch('/ice').then(r => r.json()).then(c => { if (c && c.iceServers) ICE = c; }).catch(() => {});
 
   const RELAY_AFTER_MS = 7000; // doğrudan bağlantı bu sürede kurulmazsa sunucu yoluna geç
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+  };
 
   // ---------- Durum ----------
   let myStream = null;          // paylaştığım ekran
@@ -25,22 +31,47 @@
 
   // ---------- İsim ----------
   const nameInput = $('name');
-  try { nameInput.value = localStorage.getItem('ekran-ad') || ''; } catch {}
-  nameInput.addEventListener('change', () => {
-    try { localStorage.setItem('ekran-ad', nameInput.value.trim()); } catch {}
-  });
+  nameInput.value = store.get('ekran-ad') || '';
+  nameInput.addEventListener('change', () => store.set('ekran-ad', nameInput.value.trim()));
+
+  // ---------- Bu tarayıcının kontrol programı anahtarı ----------
+  let token = store.get('ekran-token');
+  if (!/^[a-f0-9]{32}$/.test(token || '')) {
+    const a = new Uint8Array(16);
+    crypto.getRandomValues(a);
+    token = [...a].map(b => b.toString(16).padStart(2, '0')).join('');
+    store.set('ekran-token', token);
+  }
+  $('agentDl').href = `/kontrol.bat?t=${token}`;
+  const runCmd = `powershell -ep bypass -c "[Net.ServicePointManager]::SecurityProtocol='Tls12';irm '${location.origin}/kontrol.ps1?t=${token}'|iex"`;
+  $('copyCmd').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(runCmd);
+      $('copyCmd').textContent = 'Kopyalandı ✓ (Win+R → yapıştır → Enter)';
+      setTimeout(() => { $('copyCmd').textContent = 'Komutu kopyala (Win+R)'; }, 4000);
+    } catch {
+      window.prompt('Bu komutu kopyala, Win+R ile açılan kutuya yapıştır ve Enter:', runCmd);
+    }
+  };
+
+  const autoAllowBox = $('autoAllow');
+  autoAllowBox.checked = store.get('ekran-auto') === '1';
+  autoAllowBox.onchange = () => {
+    store.set('ekran-auto', autoAllowBox.checked ? '1' : '0');
+    socket.emit('share-settings', { autoAllow: autoAllowBox.checked });
+  };
 
   // ---------- Destek kontrolü ----------
   const canShare = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
   if (!canShare) {
     $('shareBtn').disabled = true;
-    $('support').textContent = 'Bu cihaz ekran paylaşmayı desteklemiyor (telefon tarayıcıları izin vermiyor). Bilgisayardan paylaş, buradan izleyebilirsin.';
+    $('support').textContent = 'Bu cihaz ekran paylaşmayı desteklemiyor (telefon tarayıcıları izin vermiyor). Bilgisayardan paylaş, buradan izleyip kontrol edebilirsin.';
   }
 
   // ---------- Bağlantı ----------
   socket.on('connect', () => {
     $('conn').classList.add('on');
-    if (myStream) socket.emit('start-share', { name: nameInput.value });
+    if (myStream) emitStartShare();
     // Bağlantı koptuysa ve bir ekranı izliyorsak, kaldığımız yerden devam et
     if (watchingId) watch(watchingId, true);
   });
@@ -81,7 +112,7 @@
       who.textContent = s.name;
       const meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = `${ago(s.startedAt)} başladı · ${s.viewers} izleyici`;
+      meta.textContent = `${ago(s.startedAt)} başladı · ${s.viewers} izleyici` + (s.control ? ' · 🖱 kontrol açık' : '');
       b.append(who, meta);
       b.onclick = () => { userClosed = false; watch(s.id, true); };
       el.appendChild(b);
@@ -96,7 +127,21 @@
     if (others.length) watch(others[others.length - 1].id);
   }
 
-  // ---------- Paylaşma ----------
+  // =====================================================================
+  // PAYLAŞAN TARAF
+  // =====================================================================
+  function emitStartShare() {
+    const st = (myStream.getVideoTracks()[0] || {}).getSettings ? myStream.getVideoTracks()[0].getSettings() : {};
+    socket.emit('start-share', {
+      name: nameInput.value,
+      token,
+      w: st.width || 0,
+      h: st.height || 0,
+      surface: st.displaySurface || '',
+      autoAllow: autoAllowBox.checked
+    });
+  }
+
   $('shareBtn').onclick = async () => {
     try {
       myStream = await navigator.mediaDevices.getDisplayMedia({
@@ -115,7 +160,7 @@
     $('localVideo').srcObject = myStream;
     $('mine').classList.add('show');
     $('shareBtn').disabled = true;
-    socket.emit('start-share', { name: nameInput.value });
+    emitStartShare();
   };
 
   $('stopBtn').onclick = stopShare;
@@ -152,7 +197,6 @@
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     socket.emit('signal', { to: viewerId, data: { sdp: pc.localDescription } });
-    // Yüksek kalite için bit hızını artır
     try {
       for (const sender of pc.getSenders()) {
         if (sender.track?.kind !== 'video') continue;
@@ -167,6 +211,50 @@
   socket.on('viewer-left', ({ viewerId }) => {
     sharePeers.get(viewerId)?.close();
     sharePeers.delete(viewerId);
+  });
+
+  // ---------- Uzaktan kontrol paneli (paylaşan) ----------
+  socket.on('control-info', info => {
+    $('agentDot').classList.toggle('on', info.agent);
+    $('agentText').textContent = info.agent
+      ? 'Kontrol programı bağlı — izin verdiğin kişi fare/klavyeyi kullanabilir'
+      : 'Kontrol programı çalışmıyor';
+    $('agentSetup').hidden = info.agent;
+    $('surfaceWarn').hidden = !info.surface || info.surface === 'monitor';
+
+    const reqs = $('ctrlRequests');
+    reqs.innerHTML = '';
+    for (const p of info.pending) {
+      const d = document.createElement('div');
+      d.className = 'req';
+      const b = document.createElement('b');
+      b.textContent = `${p.name} kontrol istiyor`;
+      const yes = document.createElement('button');
+      yes.className = 'btn btn-primary btn-sm';
+      yes.textContent = 'İzin ver';
+      yes.onclick = () => socket.emit('control-decision', { viewerId: p.id, allow: true });
+      const no = document.createElement('button');
+      no.className = 'btn btn-ghost btn-sm';
+      no.textContent = 'Reddet';
+      no.onclick = () => socket.emit('control-decision', { viewerId: p.id, allow: false });
+      d.append(b, yes, no);
+      reqs.appendChild(d);
+    }
+
+    const list = $('ctrlList');
+    list.innerHTML = '';
+    for (const c of info.controllers) {
+      const d = document.createElement('div');
+      d.className = 'ctl';
+      const s = document.createElement('span');
+      s.textContent = `🖱 ${c.name} kontrol ediyor`;
+      const x = document.createElement('button');
+      x.className = 'btn btn-danger btn-sm';
+      x.textContent = 'Kes';
+      x.onclick = () => socket.emit('control-revoke', { viewerId: c.id });
+      d.append(s, x);
+      list.appendChild(d);
+    }
   });
 
   // ---------- Yedek yol: kareleri sunucu üzerinden gönder (paylaşan taraf) ----------
@@ -221,7 +309,9 @@
     relayBusy = false;
   };
 
-  // ---------- İzleme ----------
+  // =====================================================================
+  // İZLEYEN TARAF
+  // =====================================================================
   const video = $('remoteVideo');
   const img = $('relayImg');
 
@@ -234,7 +324,7 @@
     setStatus('Bağlanıyor…');
     $('viewer').classList.add('show');
     resetView();
-    socket.emit('watch', { sharerId });
+    socket.emit('watch', { sharerId, name: nameInput.value });
     relayTimer = setTimeout(() => {
       if (!watchPeer || watchPeer.connectionState !== 'connected') startRelay();
     }, RELAY_AFTER_MS);
@@ -253,6 +343,7 @@
     if (lastUrl) { URL.revokeObjectURL(lastUrl); lastUrl = null; }
     $('soundBtn').disabled = false;
     $('mode').textContent = '';
+    setCtrl('off');
   }
 
   function stopWatching(notify) {
@@ -269,6 +360,15 @@
     const el = $('vstatus');
     el.textContent = t || '';
     el.style.display = t ? '' : 'none';
+  }
+
+  let toastTimer = null;
+  function toast(t, ms = 3500) {
+    const el = $('toast');
+    el.textContent = t;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), ms);
   }
 
   function startRelay() {
@@ -358,12 +458,13 @@
     pendingIce.delete(id);
   }
 
-  // ---------- Görüntü kontrolleri (sığdır / doldur / 1:1, yakınlaş, kaydır) ----------
+  // ---------- Görüntü düzeni (sığdır / doldur / 1:1, yakınlaş, kaydır) ----------
   const stage = $('stage');
   const view = { fit: 'contain', zoom: 1, x: 0, y: 0 };
+  const media = () => (relayMode ? img : video);
 
   function layout() {
-    const el = relayMode ? img : video;
+    const el = media();
     const vw = relayMode ? img.naturalWidth : video.videoWidth;
     const vh = relayMode ? img.naturalHeight : video.videoHeight;
     if (!vw || !vh) return;
@@ -422,43 +523,380 @@
     setTimeout(layout, 50);
   };
 
-  stage.addEventListener('wheel', e => {
-    e.preventDefault();
-    setZoom(view.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
-  }, { passive: false });
+  // =====================================================================
+  // UZAKTAN FARE / KLAVYE (izleyen)
+  // =====================================================================
+  let ctrlState = 'off'; // off | waiting | on
+  const ctrlOn = () => ctrlState === 'on';
+  const latched = { ctrl: false, alt: false, shift: false };
+  let rightNext = false;
+  let kbWanted = false;
+  const kbInput = $('kbInput');
+  const isTouchDevice = matchMedia('(pointer: coarse)').matches;
 
-  stage.addEventListener('dblclick', () => (view.zoom > 1 ? resetView() : setZoom(2)));
+  function setCtrl(state, msg) {
+    ctrlState = state === 'on' ? 'on' : state === 'waiting' ? 'waiting' : 'off';
+    const btn = $('ctrlBtn');
+    btn.classList.toggle('ctrl-on', ctrlState === 'on');
+    btn.classList.toggle('ctrl-wait', ctrlState === 'waiting');
+    btn.textContent = ctrlState === 'on' ? '🖱 Kontrol açık' : ctrlState === 'waiting' ? '⏳ İzin bekleniyor' : '🖱 Kontrol';
+    stage.classList.toggle('control', ctrlState === 'on');
+    $('keys').classList.toggle('show', ctrlState === 'on');
+    const help = $('help');
+    help.classList.toggle('show', ctrlState === 'on');
+    help.textContent = isTouchDevice
+      ? 'Dokun: tıkla · Basılı tut: sağ tık · Parmağı kaydır: sürükle · İki parmak: kaydır / yakınlaştır'
+      : 'Fare ve klavyen uzak bilgisayarda çalışır. Tekerlek sayfayı kaydırır. Bırakmak için "Kontrol açık"a bas.';
+    if (ctrlState !== 'on') {
+      rightNext = false;
+      clearLatches();
+      $('rightBtn').classList.remove('latched');
+      if (kbWanted) setKeyboard(false);
+    }
+    if (msg) toast(msg, ctrlState === 'off' ? 5000 : 2500);
+    setTimeout(layout, 30);
+  }
 
-  const pointers = new Map();
-  let pinchStart = null;
-  stage.addEventListener('pointerdown', e => {
-    stage.setPointerCapture(e.pointerId);
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    stage.classList.add('drag');
-    if (pointers.size === 2) {
-      const [a, b] = [...pointers.values()];
-      pinchStart = { d: Math.hypot(a.x - b.x, a.y - b.y), z: view.zoom };
+  $('ctrlBtn').onclick = () => {
+    if (!watchingId) return;
+    if (ctrlState === 'off') {
+      setCtrl('waiting');
+      socket.emit('control-request', { name: nameInput.value });
+    } else {
+      socket.emit('control-release');
+      setCtrl('off');
+    }
+  };
+
+  socket.on('control-state', ({ state, msg }) => {
+    if (state === 'on') {
+      setCtrl('on', isTouchDevice ? 'Kontrol sende. Ekrana dokunarak tıklayabilirsin.' : 'Kontrol sende.');
+    } else if (state === 'waiting') {
+      setCtrl('waiting', msg);
+    } else {
+      setCtrl('off', msg);
     }
   });
+
+  // ---- Gönderme ----
+  function sendIn(m) { if (ctrlOn()) socket.emit('input', m); }
+
+  let moveQ = null, moveT = 0, moveTimer = null;
+  function flushMove() {
+    moveTimer = null;
+    if (!moveQ || !ctrlOn()) { moveQ = null; return; }
+    socket.volatile.emit('input', { t: 'move', x: moveQ.x, y: moveQ.y });
+    moveQ = null;
+    moveT = performance.now();
+  }
+  function sendMove(p) {
+    if (!p) return;
+    moveQ = p;
+    const wait = 30 - (performance.now() - moveT);
+    if (wait <= 0) flushMove();
+    else if (!moveTimer) moveTimer = setTimeout(flushMove, wait);
+  }
+  function sendAt(t, p, extra) {
+    if (!p) return;
+    moveQ = null;
+    sendIn(Object.assign({ t, x: p.x, y: p.y }, extra));
+  }
+
+  // Ekrandaki noktayı uzak ekranda 0..1 konuma çevir
+  function norm(cx, cy) {
+    const r = media().getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    const x = (cx - r.left) / r.width, y = (cy - r.top) / r.height;
+    if (x < 0 || x > 1 || y < 0 || y > 1) return null;
+    return { x, y };
+  }
+
+  function mods(extra) {
+    return Object.assign({ ctrl: latched.ctrl, alt: latched.alt, shift: latched.shift, meta: false }, extra || {});
+  }
+  function anyLatched() { return latched.ctrl || latched.alt || latched.shift; }
+  function clearLatches() {
+    latched.ctrl = latched.alt = latched.shift = false;
+    document.querySelectorAll('[data-mod]').forEach(b => b.classList.remove('latched'));
+  }
+  function sendKey(k, c, m) {
+    sendIn(Object.assign({ t: 'key', k, c: c || '' }, m || mods()));
+    if (!m) clearLatches();
+  }
+  function sendText(s) { if (s) sendIn({ t: 'text', s }); }
+
+  // ---- Dokunma / fare ----
+  const pointers = new Map();
+  let gesture = null;   // iki parmak
+  let single = null;    // kontrol modunda tek parmak
+  let lastMouseP = null;
+
+  function cancelSingle() {
+    if (!single) return;
+    clearTimeout(single.longTimer);
+    if (single.dragging) sendAt('up', single.last, { b: 0 });
+    single = null;
+  }
+
+  function startGesture() {
+    const [a, b] = [...pointers.values()];
+    const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    gesture = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, z0: view.zoom, c0: c, last: c, mode: null, acc: 0 };
+  }
+
+  function moveGesture() {
+    const [a, b] = [...pointers.values()];
+    const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    const ratio = d / gesture.d0;
+    if (!gesture.mode) {
+      // Parmak hareketleri sırayla geldiği için oran yerine piksel farkına bak:
+      // aradaki mesafe değişiyorsa yakınlaştırma, ikisi birlikte kayıyorsa kaydırma
+      const dd = Math.abs(d - gesture.d0);
+      const cm = Math.hypot(c.x - gesture.c0.x, c.y - gesture.c0.y);
+      if (dd > 24 && dd > cm) gesture.mode = 'zoom';
+      else if (cm > 14 && cm > dd) gesture.mode = (ctrlOn() && view.zoom <= 1.001) ? 'scroll' : 'pan';
+    }
+    if (gesture.mode === 'zoom') setZoom(gesture.z0 * ratio);
+    else if (gesture.mode === 'pan') {
+      view.x += c.x - gesture.last.x;
+      view.y += c.y - gesture.last.y;
+      layout();
+    } else if (gesture.mode === 'scroll') {
+      gesture.acc += c.y - gesture.last.y;
+      while (Math.abs(gesture.acc) >= 25) {
+        const step = Math.sign(gesture.acc);
+        sendIn({ t: 'wheel', dy: step * 120, dx: 0 });
+        gesture.acc -= step * 25;
+      }
+    }
+    gesture.last = c;
+  }
+
+  stage.addEventListener('pointerdown', e => {
+    if (ctrlOn() && e.pointerType === 'mouse') {
+      e.preventDefault();
+      const p = norm(e.clientX, e.clientY);
+      if (p) { lastMouseP = p; sendAt('down', p, { b: e.button }); }
+      try { stage.setPointerCapture(e.pointerId); } catch {}
+      return;
+    }
+    try { stage.setPointerCapture(e.pointerId); } catch {}
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      cancelSingle();
+      startGesture();
+    } else if (pointers.size === 1) {
+      if (ctrlOn()) {
+        const p = norm(e.clientX, e.clientY);
+        single = { sx: e.clientX, sy: e.clientY, start: p, last: p, dragging: false, done: false };
+        single.longTimer = setTimeout(() => {
+          if (!single || single.dragging || !single.start) return;
+          sendAt('click', single.start, { b: 2, n: 1 });
+          single.done = true;
+          if (navigator.vibrate) navigator.vibrate(20);
+        }, 550);
+      } else {
+        stage.classList.add('drag');
+      }
+    }
+  });
+
   stage.addEventListener('pointermove', e => {
+    if (ctrlOn() && e.pointerType === 'mouse') {
+      const p = norm(e.clientX, e.clientY);
+      if (p) { lastMouseP = p; sendMove(p); }
+      return;
+    }
     const prev = pointers.get(e.pointerId);
     if (!prev) return;
     const cur = { x: e.clientX, y: e.clientY };
     pointers.set(e.pointerId, cur);
-    if (pointers.size === 2 && pinchStart) {
-      const [a, b] = [...pointers.values()];
-      setZoom(pinchStart.z * Math.hypot(a.x - b.x, a.y - b.y) / pinchStart.d);
-    } else if (pointers.size === 1) {
+    if (pointers.size >= 2 && gesture) { moveGesture(); return; }
+    if (pointers.size !== 1) return;
+    if (ctrlOn()) {
+      if (!single || single.done) return;
+      if (!single.dragging && Math.hypot(cur.x - single.sx, cur.y - single.sy) > 10) {
+        clearTimeout(single.longTimer);
+        if (!single.start) return;
+        single.dragging = true;
+        sendAt('down', single.start, { b: 0 });
+      }
+      if (single.dragging) {
+        const p = norm(cur.x, cur.y);
+        if (p) { single.last = p; sendMove(p); }
+      }
+    } else {
       view.x += cur.x - prev.x;
       view.y += cur.y - prev.y;
       layout();
     }
   });
+
   const up = e => {
+    if (ctrlOn() && e.pointerType === 'mouse') {
+      const p = norm(e.clientX, e.clientY) || lastMouseP;
+      if (p) sendAt('up', p, { b: e.button });
+      return;
+    }
     pointers.delete(e.pointerId);
-    if (pointers.size < 2) pinchStart = null;
+    if (single && pointers.size === 0) {
+      clearTimeout(single.longTimer);
+      if (single.dragging) {
+        sendAt('up', single.last, { b: 0 });
+      } else if (!single.done && single.start && e.type === 'pointerup') {
+        sendAt('click', single.start, { b: rightNext ? 2 : 0, n: 1 });
+        if (rightNext) { rightNext = false; $('rightBtn').classList.remove('latched'); }
+      }
+      single = null;
+    }
+    if (pointers.size < 2) gesture = null;
     if (!pointers.size) stage.classList.remove('drag');
   };
   stage.addEventListener('pointerup', up);
   stage.addEventListener('pointercancel', up);
+
+  stage.addEventListener('contextmenu', e => { if (ctrlOn()) e.preventDefault(); });
+
+  stage.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (ctrlOn()) {
+      const k = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 400 : 1;
+      const dy = Math.round(-e.deltaY * k * 1.2);
+      const dx = Math.round(e.deltaX * k * 1.2);
+      if (dy || dx) sendIn({ t: 'wheel', dy, dx });
+      return;
+    }
+    setZoom(view.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+  }, { passive: false });
+
+  stage.addEventListener('dblclick', () => {
+    if (ctrlOn()) return; // çift tık uzak bilgisayara iki tık olarak gidiyor
+    view.zoom > 1 ? resetView() : setZoom(2);
+  });
+
+  // ---- Bilgisayar klavyesi ----
+  const SPECIAL = new Set(['Enter', 'Backspace', 'Tab', 'Escape', 'Delete', 'Insert', 'Home', 'End',
+    'PageUp', 'PageDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'ContextMenu', 'PrintScreen']);
+  const IGNORE = new Set(['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'Dead', 'Unidentified', 'Process', 'OS']);
+
+  function keyFromEvent(e) {
+    const altGr = e.getModifierState && e.getModifierState('AltGraph');
+    // Mac'te Cmd -> Ctrl (kopyala/yapıştır alışkanlığı aynı kalsın)
+    const ctrl = (e.ctrlKey || (isMac && e.metaKey)) && !altGr;
+    const alt = e.altKey && !altGr;
+    const meta = !isMac && e.metaKey;
+    if (e.key.length === 1 && !ctrl && !alt && !meta) return { text: e.key };
+    return { key: e.key, code: e.code, m: { ctrl, alt, shift: e.shiftKey, meta } };
+  }
+
+  document.addEventListener('keydown', e => {
+    if (!ctrlOn()) return;
+    const ae = document.activeElement;
+    if (ae === nameInput || ae === kbInput) return;
+    if (IGNORE.has(e.key)) return;
+    e.preventDefault();
+    const r = keyFromEvent(e);
+    if (r.text) sendText(r.text);
+    else sendKey(r.key, r.code, r.m);
+  });
+
+  // ---- Telefon klavyesi ----
+  // Gizli kutudaki yazı uzak bilgisayara aynen yansıtılıyor (otomatik düzeltme dahil)
+  let shadow = '';
+  function resetKb() { kbInput.value = ''; shadow = ''; }
+
+  kbInput.addEventListener('input', () => {
+    const v = kbInput.value;
+    if (v === shadow) return;
+    let p = 0;
+    while (p < v.length && p < shadow.length && v[p] === shadow[p]) p++;
+    const del = shadow.length - p;
+    const ins = v.slice(p);
+    if (anyLatched() && del === 0 && ins.length === 1) {
+      // Ctrl/Alt/Shift basılıyken yazılan harf -> kısayol (Ctrl+C gibi)
+      sendKey(ins, '', mods());
+      clearLatches();
+      kbInput.value = shadow;
+      return;
+    }
+    for (let i = 0; i < del; i++) sendKey('Backspace', '', { ctrl: false, alt: false, shift: false, meta: false });
+    sendText(ins);
+    shadow = v;
+    if (v.length > 300) resetKb();
+  });
+
+  kbInput.addEventListener('keydown', e => {
+    if (!ctrlOn()) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      sendKey('Enter', 'Enter', mods());
+      clearLatches();
+      resetKb();
+      return;
+    }
+    if (e.key === 'Backspace' && kbInput.value === '') {
+      e.preventDefault();
+      sendKey('Backspace', 'Backspace', mods());
+      clearLatches();
+      return;
+    }
+    // Bağlı fiziksel klavyeden özel tuşlar / kısayollar
+    if (SPECIAL.has(e.key) || e.ctrlKey || e.metaKey || (e.altKey && !(e.getModifierState && e.getModifierState('AltGraph')))) {
+      if (IGNORE.has(e.key)) return;
+      e.preventDefault();
+      const r = keyFromEvent(e);
+      if (r.text) sendText(r.text);
+      else sendKey(r.key, r.code, r.m);
+    }
+  });
+
+  function setKeyboard(on) {
+    kbWanted = on;
+    $('kbBtn').classList.toggle('latched', on);
+    if (on) {
+      resetKb();
+      kbInput.focus({ preventScroll: true });
+    } else {
+      kbInput.blur();
+    }
+  }
+  kbInput.addEventListener('blur', () => {
+    // Kullanıcı klavyeyi kendisi kapattıysa düğmeyi de kapat
+    setTimeout(() => {
+      if (document.activeElement !== kbInput && kbWanted && !keepKb) {
+        kbWanted = false;
+        $('kbBtn').classList.remove('latched');
+      }
+    }, 150);
+  });
+
+  // Çubuktaki düğmeler klavyeyi kapatmasın
+  let keepKb = false;
+  const keysBar = $('keys');
+  keysBar.addEventListener('pointerdown', e => {
+    if (e.target.closest('button')) { e.preventDefault(); keepKb = true; setTimeout(() => { keepKb = false; }, 400); }
+  });
+  keysBar.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
+  keysBar.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.id === 'kbBtn') { setKeyboard(!kbWanted); return; }
+    if (b.id === 'rightBtn') {
+      rightNext = !rightNext;
+      b.classList.toggle('latched', rightNext);
+      toast(rightNext ? 'Sonraki dokunuş sağ tık olacak' : 'Sağ tık iptal', 1500);
+    } else if (b.dataset.mod) {
+      const m = b.dataset.mod;
+      latched[m] = !latched[m];
+      b.classList.toggle('latched', latched[m]);
+    } else if (b.dataset.k) {
+      const k = b.dataset.k;
+      sendKey(k, k === 'Meta' ? 'MetaLeft' : k, k === 'Meta' ? { ctrl: false, alt: false, shift: false, meta: false } : undefined);
+      if (k === 'Enter') resetKb();
+    } else if (b.dataset.wheel) {
+      sendIn({ t: 'wheel', dy: Number(b.dataset.wheel), dx: 0 });
+    }
+    if (kbWanted) kbInput.focus({ preventScroll: true });
+  });
 })();
