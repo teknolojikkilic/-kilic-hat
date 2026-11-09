@@ -597,7 +597,7 @@
     const help = $('help');
     help.classList.toggle('show', ctrlState === 'on');
     help.textContent = isTouchDevice
-      ? 'Dokun: tıkla · Basılı tut: sağ tık · Parmağı kaydır: sürükle · İki parmak: kaydır / yakınlaştır'
+      ? 'Dokun: tıkla · Basılı tut: sağ tık · Parmağı kaydır: sürükle · İki parmak: yakınlaştır · Sağdaki tekerlek: sayfayı kaydır'
       : 'Fare ve klavyen uzak bilgisayarda çalışır. Tekerlek sayfayı kaydırır. Bırakmak için "Kontrol açık"a bas.';
     if (ctrlState !== 'on') {
       rightNext = false;
@@ -809,6 +809,51 @@
   stage.addEventListener('pointercancel', up);
 
   stage.addEventListener('contextmenu', e => { if (ctrlOn()) e.preventDefault(); });
+
+  // ---- Kaydırma tekerleği (sağ kenar): fare tekerleği gibi yukarı/aşağı sürükle ----
+  (() => {
+    const strip = $('wheelStrip');
+    let wp = null;
+    const stop = e => { e.stopPropagation(); e.preventDefault(); };
+    strip.addEventListener('pointerdown', e => {
+      stop(e);
+      if (!ctrlOn()) return;
+      try { strip.setPointerCapture(e.pointerId); } catch {}
+      wp = { id: e.pointerId, y: e.clientY, y0: e.clientY, acc: 0, moved: false, off: 0 };
+      strip.classList.add('active');
+    });
+    strip.addEventListener('pointermove', e => {
+      stop(e);
+      if (!wp || e.pointerId !== wp.id) return;
+      const dy = e.clientY - wp.y;
+      wp.y = e.clientY;
+      wp.acc += dy;
+      wp.off += dy;
+      strip.style.setProperty('--wo', wp.off + 'px');
+      if (Math.abs(e.clientY - wp.y0) > 6) wp.moved = true;
+      while (Math.abs(wp.acc) >= 18) {
+        const step = Math.sign(wp.acc);
+        // parmak aşağı -> sayfa aşağı (fare tekerleğini kendine doğru çevirmek gibi)
+        sendIn({ t: 'wheel', dy: -step * 120, dx: 0 });
+        wp.acc -= step * 18;
+      }
+    });
+    const end = e => {
+      stop(e);
+      if (!wp || e.pointerId !== wp.id) return;
+      if (!wp.moved) {
+        // dokunma: üst yarı yukarı, alt yarı aşağı bir çentik
+        const r = strip.getBoundingClientRect();
+        sendIn({ t: 'wheel', dy: e.clientY < r.top + r.height / 2 ? 240 : -240, dx: 0 });
+      }
+      wp = null;
+      strip.classList.remove('active');
+    };
+    strip.addEventListener('pointerup', end);
+    strip.addEventListener('pointercancel', end);
+    for (const ev of ['click', 'dblclick', 'contextmenu', 'touchstart', 'touchmove', 'wheel'])
+      strip.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+  })();
 
   stage.addEventListener('wheel', e => {
     e.preventDefault();

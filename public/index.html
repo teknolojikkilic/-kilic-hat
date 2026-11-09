@@ -99,6 +99,14 @@
   .stage{position:relative;height:min(72vh,720px);overflow:hidden;touch-action:none;cursor:grab;background:#000}
   .stage.drag{cursor:grabbing}
   .stage.control{cursor:default;box-shadow:inset 0 0 0 2px var(--accent)}
+  .wheelstrip{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:44px;height:min(70%,320px);
+    display:none;flex-direction:column;align-items:center;justify-content:space-between;padding:8px 0;z-index:5;
+    background:rgba(22,26,34,.55);border:1px solid rgba(255,255,255,.18);border-radius:22px;touch-action:none;
+    color:rgba(255,255,255,.8);font-size:13px;user-select:none;-webkit-user-select:none;cursor:ns-resize}
+  .wheelstrip i{flex:1;width:6px;margin:6px 0;border-radius:3px;
+    background:repeating-linear-gradient(to bottom,rgba(255,255,255,.55) 0 3px,transparent 3px 9px);background-position:0 var(--wo,0px)}
+  .wheelstrip.active{background:rgba(22,26,34,.8);border-color:var(--accent)}
+  .stage.control .wheelstrip{display:flex}
   .stage video,.stage img{position:absolute;left:50%;top:50%;transform-origin:center center;
     max-width:none;max-height:none;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;
     -webkit-touch-callout:none}
@@ -232,6 +240,7 @@
       <img id="relayImg" alt="" draggable="false" style="display:none">
       <div id="vstatus" class="status">Bağlanıyor…</div>
       <div id="toast" class="toast"></div>
+      <div id="wheelStrip" class="wheelstrip" aria-label="Kaydırma tekerleği"><span>▲</span><i></i><span>▼</span></div>
     </div>
     <div id="keys" class="keys">
       <button id="kbBtn" class="kb">⌨ Klavye</button>
