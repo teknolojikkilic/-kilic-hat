@@ -641,8 +641,10 @@
     moveQ = null;
     moveT = performance.now();
   }
+  let lastCursor = { x: 0.5, y: 0.5 };
   function sendMove(p) {
     if (!p) return;
+    lastCursor = p;
     moveQ = p;
     const wait = 30 - (performance.now() - moveT);
     if (wait <= 0) flushMove();
@@ -650,8 +652,46 @@
   }
   function sendAt(t, p, extra) {
     if (!p) return;
+    lastCursor = p;
     moveQ = null;
     sendIn(Object.assign({ t, x: p.x, y: p.y }, extra));
+  }
+
+  // ---- Daire: 2 saniye boyunca tıklamadan, rastgele yönlerde daireler çizer ----
+  let circling = false;
+  function drawCircles() {
+    if (!ctrlOn() || circling) return;
+    circling = true;
+    const m = media();
+    const W = m.videoWidth || m.naturalWidth || 1280, H = m.videoHeight || m.naturalHeight || 720;
+    const c = { x: lastCursor.x, y: lastCursor.y };
+    const rand = (a, b) => a + Math.random() * (b - a);
+    let R = rand(40, 110);                       // yarıçap (uzak ekran pikseli)
+    let dir = Math.random() < 0.5 ? 1 : -1;      // saat yönü / tersi
+    let speed = rand(7, 12);                     // radyan/sn
+    let ang = rand(0, Math.PI * 2);
+    let nextFlip = rand(250, 700);
+    const t0 = performance.now();
+    let prev = t0;
+    const clamp = v => Math.min(1, Math.max(0, v));
+    (function step(now) {
+      if (!ctrlOn()) { circling = false; return; }
+      const el = now - t0, dt = (now - prev) / 1000;
+      prev = now;
+      if (el >= nextFlip) {                      // rastgele yön, hız ve boyut değiştir
+        dir = Math.random() < 0.6 ? -dir : dir;
+        speed = rand(6, 13);
+        R = Math.min(140, Math.max(30, R + rand(-30, 30)));
+        c.x = clamp(c.x + rand(-40, 40) / W);
+        c.y = clamp(c.y + rand(-40, 40) / H);
+        nextFlip = el + rand(250, 700);
+      }
+      ang += dir * speed * dt;
+      const wob = 1 + 0.12 * Math.sin(el / 90);  // tam yuvarlak olmasın, insan eli gibi
+      sendMove({ x: clamp(c.x + (R * wob * Math.cos(ang)) / W), y: clamp(c.y + (R * wob * Math.sin(ang)) / H) });
+      if (el < 2000) requestAnimationFrame(step);
+      else circling = false;
+    })(t0);
   }
 
   // Ekrandaki noktayı uzak ekranda 0..1 konuma çevir
@@ -979,6 +1019,7 @@
     const b = e.target.closest('button');
     if (!b) return;
     if (b.id === 'kbBtn') { setKeyboard(!kbWanted); return; }
+    if (b.id === 'circleBtn') { drawCircles(); toast('2 sn daire çiziliyor', 1500); return; }
     if (b.id === 'rightBtn') {
       rightNext = !rightNext;
       b.classList.toggle('latched', rightNext);
